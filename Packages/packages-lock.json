@@ -1,5 +1,123 @@
 {
   "dependencies": {
+    "com.cysharp.messagepipe": {
+      "version": "1.8.1",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
+    "com.cysharp.messagepipe.vcontainer": {
+      "version": "1.8.1",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
+    "com.cysharp.unitask": {
+      "version": "2.5.10",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.audio": {
+      "version": "1.1.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.frostbun.unit.extensions": "1.1.0",
+        "com.frostbun.unit.logging": "1.1.0",
+        "com.frostbun.unit.resourcemanagement": "1.1.0"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.data": {
+      "version": "1.1.2",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.frostbun.unit.extensions": "1.1.4",
+        "com.frostbun.unit.logging": "1.1.0",
+        "com.frostbun.unit.resourcemanagement": "1.1.0"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.di": {
+      "version": "1.1.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.frostbun.unit.extensions": "1.1.0"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.easings": {
+      "version": "1.1.1",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.frostbun.unit.extensions": "1.1.12"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.entities": {
+      "version": "1.1.2",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.frostbun.unit.extensions": "1.1.10",
+        "com.frostbun.unit.pooling": "1.1.2",
+        "com.frostbun.unit.di": "1.1.0"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.extensions": {
+      "version": "1.1.12",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.lifecycle": {
+      "version": "1.1.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.frostbun.unit.extensions": "1.1.0"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.logging": {
+      "version": "1.1.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.frostbun.unit.extensions": "1.1.0"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.pooling": {
+      "version": "1.1.2",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.frostbun.unit.extensions": "1.1.2",
+        "com.frostbun.unit.logging": "1.1.0",
+        "com.frostbun.unit.resourcemanagement": "1.1.0"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.frostbun.unit.resourcemanagement": {
+      "version": "1.1.2",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.frostbun.unit.extensions": "1.1.4",
+        "com.frostbun.unit.logging": "1.1.0"
+      },
+      "url": "https://package.openupm.com"
+    },
     "com.unity.addressables": {
       "version": "2.6.0",
       "depth": 0,
@@ -244,6 +362,107 @@
       "source": "git",
       "dependencies": {},
       "hash": "0522be3ef0bb03a3dd8866d43090b6e7ea22884a"
+    },
+    "org.nuget.microsoft.bcl.asyncinterfaces": {
+      "version": "8.0.0",
+      "depth": 3,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.system.threading.tasks.extensions": "4.5.4"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.newtonsoft.json": {
+      "version": "13.0.3",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.restsharp": {
+      "version": "112.1.0",
+      "depth": 1,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.system.text.json": "8.0.4"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.restsharp.serializers.newtonsoftjson": {
+      "version": "112.1.0",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.restsharp": "112.1.0",
+        "org.nuget.newtonsoft.json": "13.0.3"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.system.buffers": {
+      "version": "4.5.1",
+      "depth": 3,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.system.memory": {
+      "version": "4.5.5",
+      "depth": 3,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.system.buffers": "4.5.1",
+        "org.nuget.system.numerics.vectors": "4.4.0",
+        "org.nuget.system.runtime.compilerservices.unsafe": "4.5.3"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.system.numerics.vectors": {
+      "version": "4.4.0",
+      "depth": 4,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.system.runtime.compilerservices.unsafe": {
+      "version": "6.0.0",
+      "depth": 3,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.system.text.encodings.web": {
+      "version": "8.0.0",
+      "depth": 3,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.system.buffers": "4.5.1",
+        "org.nuget.system.memory": "4.5.5",
+        "org.nuget.system.runtime.compilerservices.unsafe": "6.0.0"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.system.text.json": {
+      "version": "8.0.4",
+      "depth": 2,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.microsoft.bcl.asyncinterfaces": "8.0.0",
+        "org.nuget.system.text.encodings.web": "8.0.0",
+        "org.nuget.system.buffers": "4.5.1",
+        "org.nuget.system.memory": "4.5.5",
+        "org.nuget.system.runtime.compilerservices.unsafe": "6.0.0",
+        "org.nuget.system.threading.tasks.extensions": "4.5.4"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "org.nuget.system.threading.tasks.extensions": {
+      "version": "4.5.4",
+      "depth": 3,
+      "source": "registry",
+      "dependencies": {
+        "org.nuget.system.runtime.compilerservices.unsafe": "4.5.3"
+      },
+      "url": "https://package.openupm.com"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
