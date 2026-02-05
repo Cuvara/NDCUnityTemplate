@@ -1,0 +1,6 @@
+[submodule "Packages/com.gdk.core"]
+	path = Packages/com.gdk.core
+	url = git@github.com:NightHowlGames/GameFoundation.git
+[submodule "Packages/com.gdk.3rd"]
+	path = Packages/com.gdk.3rd
+	url = git@github.com:NightHowlGames/ThirdPartyServices.git
