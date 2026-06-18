@@ -1,0 +1,82 @@
+{
+  "$schema": "../unity-build-workflows/schemas/unity-build-config.schema.json",
+  "projectName": "NDC-Unity-Template",
+  "companyName": "DefaultCompany",
+  "productName": "NDC-Unity-Template",
+  "bundleVersion": "1.0.0",
+  "buildNumberStrategy": "github_run_number",
+
+  "outputDirectory": "Builds/Production",
+
+  "scenes": [
+    "Assets/Scenes/MainScene.unity"
+  ],
+
+  "scriptingBackend": "IL2CPP",
+  "apiCompatibilityLevel": "NET_Standard_2_1",
+
+  "developmentBuild": false,
+  "allowDebugging": false,
+  "connectProfiler": false,
+  "deepProfiling": false,
+  "cleanBuildCache": true,
+
+  "runTests": true,
+
+  "addressables": {
+    "enabled": true,
+    "profile": "Default",
+    "buildRemoteCatalog": true
+  },
+
+  "android": {
+    "applicationId": "com.UnityTechnologies.com.unity.template.urpblank",
+    "buildAppBundle": true,
+    "minSdkVersion": 22,
+    "targetSdkVersion": 34,
+    "architecture": "ARM64",
+    "keystoreMode": "custom",
+    "symbolExport": "public"
+  },
+
+  "webgl": {
+    "compressionFormat": "Brotli",
+    "decompressionFallback": true,
+    "dataCaching": true,
+    "memorySize": 256,
+    "template": "Default",
+    "outputName": "WebGL"
+  },
+
+  "windows": {
+    "architecture": "x86_64",
+    "outputName": "NDC-Unity-Template",
+    "compressOutput": true
+  },
+
+  "gates": {
+    "maxBuildSizeMB": 500,
+    "warnBuildSizeIncreasePct": 5,
+    "failBuildSizeIncreasePct": 15,
+    "failOnWarnings": true,
+    "requiredValidationRules": [
+      "no_missing_references",
+      "no_missing_scripts",
+      "no_missing_prefabs",
+      "addressables_content_hash_stable",
+      "bundle_identifier_matches_config"
+    ]
+  },
+
+  "metadata": {
+    "repository": "https://github.com/dyCuong03/NDC-Unity-Template",
+    "team": "mobile",
+    "environment": "production",
+    "distribution": "app-store"
+  },
+
+  "hooks": {
+    "preBuild": [],
+    "postBuild": []
+  }
+}
