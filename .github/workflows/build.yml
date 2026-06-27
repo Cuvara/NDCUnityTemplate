@@ -84,7 +84,7 @@ on:
 jobs:
   build:
     name: Unity Build
-    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build-multi.yml@feature/simplify-build-workflow-graph
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build-multi.yml@main
     with:
       # On push/PR default to Android; on workflow_dispatch use selected platform.
       platform: >-
@@ -130,7 +130,7 @@ jobs:
 
       # Toolkit wiring — must match the @ref in the 'uses:' line above.
       workflow-repository: dyCuong03/unity-build-workflows
-      workflow-ref:        feature/simplify-build-workflow-graph
+      workflow-ref:        main
       integration-mode:   remote
       toolkit-path:       unity-build-workflows
 
