@@ -1,20 +1,16 @@
 name: Unity CI
 
-# Caller workflow. Delegates to the reusable workflows in
-# dyCuong03/unity-build-workflows.
-# Docker platforms (Android, WebGL, Linux64, LinuxServer) run inside containers on ubuntu-latest.
-# iOS runs natively on a self-hosted macOS runner (macos-unity-xcode).
+# Simplified caller workflow for dyCuong03/unity-build-workflows.
 #
-# Required secrets (repo Settings > Secrets and variables > Actions):
-#   UNITY_LICENSE     -- Unity .ulf license content (base64), OR
-#   UNITY_EMAIL / UNITY_PASSWORD -- account activation
+# Graph: detect → validate → test → build (per-platform) → report
+# Docker platforms (Android, WebGL, Linux64): ubuntu-latest containers.
+# iOS: self-hosted macOS runner (macos-unity-xcode).
 #
-# Platform-specific secrets:
-#   Android sign:   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASS, ANDROID_KEY_ALIAS, ANDROID_KEY_PASS
-#   WebGL deploy:   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
-#   iOS sign:       IOS_DISTRIBUTION_CERTIFICATE_BASE64, IOS_DISTRIBUTION_CERTIFICATE_PASSWORD,
-#                   IOS_PROVISIONING_PROFILE_BASE64
-#   iOS release:    APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_PRIVATE_KEY
+# Required secrets:
+#   UNITY_LICENSE / UNITY_EMAIL+UNITY_PASSWORD — all platforms
+#   ANDROID_KEYSTORE_BASE64, _PASS, _ALIAS, _KEY_PASS — Android signing
+#   CLOUDFLARE_API_TOKEN, _ACCOUNT_ID — WebGL deploy
+#   IOS signing/release — see docs
 
 on:
   push:
@@ -23,51 +19,175 @@ on:
     branches: [main, develop]
   workflow_dispatch:
     inputs:
+      platform:
+        description: Platform to build
+        required: false
+        default: All
+        type: choice
+        options: [All, Android, WebGL, Linux64, LinuxServer, iOS]
       environment:
         description: Target environment
         required: false
         default: development
         type: choice
         options: [development, staging, production]
-      target-platform:
-        description: Platform to build
+      release-mode:
+        description: Enable release gates
         required: false
-        default: Android
+        default: false
+        type: boolean
+      clean-build:
+        description: Force full reimport
+        required: false
+        default: false
+        type: boolean
+      build-addressables:
+        description: Build Addressables content
+        required: false
+        default: true
+        type: boolean
+      test-level:
+        description: Test level
+        required: false
+        default: editmode
         type: choice
-        options: [Android, WebGL, Linux64, LinuxServer, iOS]
+        options: [none, editmode, playmode, full]
 
-# Derive environment from branch when not explicitly set
 env:
-  DEFAULT_ENV: >-
-    ${{
-      github.ref_name == 'main' && 'production' ||
-      startsWith(github.ref_name, 'release-') && 'staging' ||
-      github.ref_name == 'staging' && 'staging' ||
-      'development'
-    }}
+  UNITY_VERSION: '6000.0.26f1'
+  TOOLKIT_REPO: dyCuong03/unity-build-workflows
+  TOOLKIT_REF: main
+  IMAGE_NAMESPACE: dycuong03
+  IMAGE_NAME: unity-editor
 
 jobs:
-  # -- Android (Docker, ubuntu-latest) ----------------------------------------
-  build-android:
-    name: Android
-    if: >-
-      ${{
-        github.event_name != 'workflow_dispatch' ||
-        inputs.target-platform == 'Android'
-      }}
-    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build.yml@main
+  # ── 1. DETECT CHANGES + PLATFORM SELECTION ─────────────────────────────────
+  detect:
+    name: Detect & Select
+    runs-on: ubuntu-latest
+    outputs:
+      should-build: ${{ steps.filter.outputs.should-build }}
+      build-version: ${{ steps.version.outputs.version }}
+      environment: ${{ steps.env.outputs.environment }}
+      build-android: ${{ steps.platforms.outputs.android }}
+      build-webgl: ${{ steps.platforms.outputs.webgl }}
+      build-linux: ${{ steps.platforms.outputs.linux }}
+      build-ios: ${{ steps.platforms.outputs.ios }}
+      linux-target: ${{ steps.platforms.outputs.linux-target }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Resolve environment
+        id: env
+        shell: bash
+        run: |
+          ENV="${{ inputs.environment }}"
+          if [ -z "$ENV" ]; then
+            case "${{ github.ref_name }}" in
+              main)       ENV="production" ;;
+              staging)    ENV="staging" ;;
+              release-*)  ENV="staging" ;;
+              *)          ENV="development" ;;
+            esac
+          fi
+          echo "environment=${ENV}" >> "$GITHUB_OUTPUT"
+
+      - name: Select platforms
+        id: platforms
+        shell: bash
+        run: |
+          PLATFORM="${{ inputs.platform }}"
+          EVENT="${{ github.event_name }}"
+
+          # Default: push/PR → Android only; dispatch → selected
+          if [ "$EVENT" != "workflow_dispatch" ]; then
+            PLATFORM="Android"
+          fi
+          if [ -z "$PLATFORM" ]; then
+            PLATFORM="All"
+          fi
+
+          case "$PLATFORM" in
+            All)
+              echo "android=true"   >> "$GITHUB_OUTPUT"
+              echo "webgl=true"     >> "$GITHUB_OUTPUT"
+              echo "linux=true"     >> "$GITHUB_OUTPUT"
+              echo "ios=true"       >> "$GITHUB_OUTPUT"
+              echo "linux-target=Linux64" >> "$GITHUB_OUTPUT"
+              ;;
+            Android)
+              echo "android=true"   >> "$GITHUB_OUTPUT"
+              echo "webgl=false"    >> "$GITHUB_OUTPUT"
+              echo "linux=false"    >> "$GITHUB_OUTPUT"
+              echo "ios=false"      >> "$GITHUB_OUTPUT"
+              echo "linux-target=Linux64" >> "$GITHUB_OUTPUT"
+              ;;
+            WebGL)
+              echo "android=false"  >> "$GITHUB_OUTPUT"
+              echo "webgl=true"     >> "$GITHUB_OUTPUT"
+              echo "linux=false"    >> "$GITHUB_OUTPUT"
+              echo "ios=false"      >> "$GITHUB_OUTPUT"
+              echo "linux-target=Linux64" >> "$GITHUB_OUTPUT"
+              ;;
+            Linux64|LinuxServer)
+              echo "android=false"  >> "$GITHUB_OUTPUT"
+              echo "webgl=false"    >> "$GITHUB_OUTPUT"
+              echo "linux=true"     >> "$GITHUB_OUTPUT"
+              echo "ios=false"      >> "$GITHUB_OUTPUT"
+              echo "linux-target=${PLATFORM}" >> "$GITHUB_OUTPUT"
+              ;;
+            iOS)
+              echo "android=false"  >> "$GITHUB_OUTPUT"
+              echo "webgl=false"    >> "$GITHUB_OUTPUT"
+              echo "linux=false"    >> "$GITHUB_OUTPUT"
+              echo "ios=true"       >> "$GITHUB_OUTPUT"
+              echo "linux-target=Linux64" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Unsupported platform: ${PLATFORM}"
+              exit 1
+              ;;
+          esac
+
+          echo "Selected platform: ${PLATFORM}"
+
+      - name: Detect changed paths
+        id: filter
+        shell: bash
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          NON_DOC=$(echo "$CHANGED" | grep -vE "^(docs/|.*\.md$|README)" || true)
+          if [ -z "$NON_DOC" ] && [ -n "$CHANGED" ]; then
+            echo "Only documentation changed — skipping build."
+            echo "should-build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should-build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve build version
+        id: version
+        shell: bash
+        run: |
+          VER=$(grep -o '"bundleVersion"[[:space:]]*:[[:space:]]*"[^"]*"' BuildConfig/base.json | grep -o '"[^"]*"$' | tr -d '"' || echo "0.1.0")
+          echo "version=${VER}-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+  # ── 2. VALIDATE (once, not per-platform) ───────────────────────────────────
+  validate:
+    name: Validate
+    needs: detect
+    if: needs.detect.outputs.should-build == 'true'
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-validate.yml@main
     with:
       project-path: '.'
       unity-version: '6000.0.26f1'
       target-platform: Android
-      environment: ${{ inputs.environment || github.ref_name == 'main' && 'production' || startsWith(github.ref_name, 'release-') && 'staging' || github.ref_name == 'staging' && 'staging' || 'development' }}
+      environment: ${{ needs.detect.outputs.environment }}
       build-config-path: BuildConfig
-      test-level: editmode
-      cache-mode: safe
-      build-addressables: true
-      upload-artifact: true
-      deploy-target: none
-      release-mode: false
+      release-mode: ${{ inputs.release-mode || false }}
       workflow-repository: dyCuong03/unity-build-workflows
       workflow-ref: main
       image-namespace: dycuong03
@@ -76,104 +196,221 @@ jobs:
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASS }}
-      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-      ANDROID_KEY_PASS: ${{ secrets.ANDROID_KEY_PASS }}
 
-  # -- WebGL (Docker, ubuntu-latest) ------------------------------------------
+  # ── 3. TEST (once, not per-platform) ───────────────────────────────────────
+  test:
+    name: Test
+    needs: [detect, validate]
+    if: >-
+      needs.detect.outputs.should-build == 'true' &&
+      needs.validate.outputs.validation-passed == 'true' &&
+      (inputs.test-level || 'editmode') != 'none'
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-test.yml@main
+    with:
+      project-path: '.'
+      unity-version: '6000.0.26f1'
+      target-platform: Android
+      test-level: ${{ inputs.test-level || 'editmode' }}
+      cache-mode: safe
+      workflow-repository: dyCuong03/unity-build-workflows
+      workflow-ref: main
+      image-namespace: dycuong03
+      image-name: unity-editor
+    secrets:
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+  # ── 4a. BUILD ANDROID ─────────────────────────────────────────────────────
+  build-android:
+    name: Build Android
+    needs: [detect, validate, test]
+    if: >-
+      always() &&
+      needs.detect.outputs.should-build == 'true' &&
+      needs.detect.outputs.build-android == 'true' &&
+      needs.validate.outputs.validation-passed == 'true' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build-android.yml@main
+    with:
+      project-path: '.'
+      unity-version: '6000.0.26f1'
+      environment: ${{ needs.detect.outputs.environment }}
+      build-config-path: BuildConfig
+      cache-mode: safe
+      build-addressables: ${{ inputs.build-addressables || true }}
+      upload-artifact: true
+      clean-build: ${{ inputs.clean-build || false }}
+      release-mode: ${{ inputs.release-mode || false }}
+      build-version: ${{ needs.detect.outputs.build-version }}
+      workflow-repository: dyCuong03/unity-build-workflows
+      workflow-ref: main
+      image-namespace: dycuong03
+      image-name: unity-editor
+    secrets: inherit
+
+  # ── 4b. BUILD WEBGL ───────────────────────────────────────────────────────
   build-webgl:
-    name: WebGL
+    name: Build WebGL
+    needs: [detect, validate, test]
     if: >-
-      ${{
-        github.event_name == 'workflow_dispatch' &&
-        inputs.target-platform == 'WebGL'
-      }}
-    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build.yml@main
+      always() &&
+      needs.detect.outputs.should-build == 'true' &&
+      needs.detect.outputs.build-webgl == 'true' &&
+      needs.validate.outputs.validation-passed == 'true' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build-webgl.yml@main
     with:
       project-path: '.'
       unity-version: '6000.0.26f1'
-      target-platform: WebGL
-      environment: ${{ inputs.environment || 'development' }}
+      environment: ${{ needs.detect.outputs.environment }}
       build-config-path: BuildConfig
-      test-level: editmode
       cache-mode: safe
-      build-addressables: true
+      build-addressables: ${{ inputs.build-addressables || true }}
       upload-artifact: true
-      deploy-target: none
-      release-mode: false
+      clean-build: ${{ inputs.clean-build || false }}
+      release-mode: ${{ inputs.release-mode || false }}
+      build-version: ${{ needs.detect.outputs.build-version }}
       workflow-repository: dyCuong03/unity-build-workflows
       workflow-ref: main
       image-namespace: dycuong03
       image-name: unity-editor
-    secrets:
-      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    secrets: inherit
 
-  # -- Linux64 / LinuxServer (Docker, ubuntu-latest) --------------------------
+  # ── 4c. BUILD LINUX ───────────────────────────────────────────────────────
   build-linux:
-    name: Linux
+    name: Build Linux
+    needs: [detect, validate, test]
     if: >-
-      ${{
-        github.event_name == 'workflow_dispatch' &&
-        (inputs.target-platform == 'Linux64' || inputs.target-platform == 'LinuxServer')
-      }}
-    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build.yml@main
+      always() &&
+      needs.detect.outputs.should-build == 'true' &&
+      needs.detect.outputs.build-linux == 'true' &&
+      needs.validate.outputs.validation-passed == 'true' &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build-linux.yml@main
     with:
       project-path: '.'
       unity-version: '6000.0.26f1'
-      target-platform: ${{ inputs.target-platform || 'Linux64' }}
-      environment: ${{ inputs.environment || 'development' }}
+      target-platform: ${{ needs.detect.outputs.linux-target }}
+      environment: ${{ needs.detect.outputs.environment }}
       build-config-path: BuildConfig
-      test-level: editmode
       cache-mode: safe
-      build-addressables: true
+      build-addressables: ${{ inputs.build-addressables || true }}
       upload-artifact: true
-      release-mode: false
+      clean-build: ${{ inputs.clean-build || false }}
+      release-mode: ${{ inputs.release-mode || false }}
+      build-version: ${{ needs.detect.outputs.build-version }}
       workflow-repository: dyCuong03/unity-build-workflows
       workflow-ref: main
       image-namespace: dycuong03
       image-name: unity-editor
-    secrets:
-      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+    secrets: inherit
 
-  # -- iOS (macOS native, self-hosted runner: macos-unity-xcode) ---------------
+  # ── 4d. BUILD iOS (macOS native, separate runner) ─────────────────────────
   build-ios:
-    name: iOS
+    name: Build iOS
+    needs: [detect, validate, test]
     if: >-
-      ${{
-        github.event_name == 'workflow_dispatch' &&
-        inputs.target-platform == 'iOS'
-      }}
-    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build.yml@main
+      always() &&
+      needs.detect.outputs.should-build == 'true' &&
+      needs.detect.outputs.build-ios == 'true' &&
+      (needs.validate.result == 'success' || needs.validate.result == 'skipped') &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped')
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build-ios.yml@main
     with:
       project-path: '.'
       unity-version: '6000.0.26f1'
-      target-platform: iOS
-      environment: ${{ inputs.environment || 'development' }}
+      environment: ${{ needs.detect.outputs.environment }}
       build-config-path: BuildConfig
-      test-level: none
       cache-mode: safe
-      build-addressables: true
+      build-addressables: ${{ inputs.build-addressables || true }}
       upload-artifact: true
-      release-mode: false
+      clean-build: ${{ inputs.clean-build || false }}
+      build-version: ${{ needs.detect.outputs.build-version }}
+      ios-runner-label: macos-unity-xcode
       workflow-repository: dyCuong03/unity-build-workflows
       workflow-ref: main
-      image-namespace: dycuong03
-      image-name: unity-editor
-      ios-runner-label: macos-unity-xcode
-    secrets:
-      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-      IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
-      IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
-      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
-      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
-      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+    secrets: inherit
+
+  # ── 5. FINAL REPORT (once, summarizes all platforms) ───────────────────────
+  report:
+    name: Final Report
+    needs: [detect, validate, test, build-android, build-webgl, build-linux, build-ios]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Summarize build results
+        shell: bash
+        env:
+          DETECT_RESULT: ${{ needs.detect.result }}
+          VALIDATE_RESULT: ${{ needs.validate.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          ANDROID_RESULT: ${{ needs.build-android.result }}
+          WEBGL_RESULT: ${{ needs.build-webgl.result }}
+          LINUX_RESULT: ${{ needs.build-linux.result }}
+          IOS_RESULT: ${{ needs.build-ios.result }}
+          BUILD_ANDROID: ${{ needs.detect.outputs.build-android }}
+          BUILD_WEBGL: ${{ needs.detect.outputs.build-webgl }}
+          BUILD_LINUX: ${{ needs.detect.outputs.build-linux }}
+          BUILD_IOS: ${{ needs.detect.outputs.build-ios }}
+          BUILD_VERSION: ${{ needs.detect.outputs.build-version }}
+          ENVIRONMENT: ${{ needs.detect.outputs.environment }}
+        run: |
+          status_label() {
+            local selected="$1" result="$2"
+            if [ "$selected" != "true" ]; then echo "SKIPPED"
+            elif [ "$result" = "success" ]; then echo "PASS"
+            elif [ "$result" = "skipped" ]; then echo "SKIPPED"
+            elif [ "$result" = "failure" ]; then echo "FAIL"
+            elif [ "$result" = "cancelled" ]; then echo "CANCELLED"
+            else echo "BLOCKED"; fi
+          }
+
+          ANDROID_STATUS=$(status_label "$BUILD_ANDROID" "$ANDROID_RESULT")
+          WEBGL_STATUS=$(status_label "$BUILD_WEBGL" "$WEBGL_RESULT")
+          LINUX_STATUS=$(status_label "$BUILD_LINUX" "$LINUX_RESULT")
+          IOS_STATUS=$(status_label "$BUILD_IOS" "$IOS_RESULT")
+
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ## Unity CI Build Report
+
+          | Field | Value |
+          |-------|-------|
+          | Version | ${BUILD_VERSION} |
+          | Environment | ${ENVIRONMENT} |
+          | Detect | ${DETECT_RESULT} |
+          | Validate | ${VALIDATE_RESULT} |
+          | Test | ${TEST_RESULT} |
+
+          ### Platform Results
+
+          | Platform | Selected | Status |
+          |----------|----------|--------|
+          | Android | ${BUILD_ANDROID} | ${ANDROID_STATUS} |
+          | WebGL | ${BUILD_WEBGL} | ${WEBGL_STATUS} |
+          | Linux | ${BUILD_LINUX} | ${LINUX_STATUS} |
+          | iOS | ${BUILD_IOS} | ${IOS_STATUS} |
+
+          ### Run Details
+          - Run ID: ${{ github.run_id }}
+          - Run URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EOF
+
+          echo "=== BUILD REPORT ==="
+          echo "Android: ${ANDROID_STATUS}"
+          echo "WebGL:   ${WEBGL_STATUS}"
+          echo "Linux:   ${LINUX_STATUS}"
+          echo "iOS:     ${IOS_STATUS}"
+
+          # Fail the report job if any selected platform failed
+          FAILED=false
+          [ "$BUILD_ANDROID" = "true" ] && [ "$ANDROID_RESULT" = "failure" ] && FAILED=true
+          [ "$BUILD_WEBGL" = "true" ] && [ "$WEBGL_RESULT" = "failure" ] && FAILED=true
+          [ "$BUILD_LINUX" = "true" ] && [ "$LINUX_RESULT" = "failure" ] && FAILED=true
+          [ "$BUILD_IOS" = "true" ] && [ "$IOS_RESULT" = "failure" ] && FAILED=true
+
+          if [ "$FAILED" = "true" ]; then
+            echo "::error::One or more selected platforms failed. See report above."
+            exit 1
+          fi
