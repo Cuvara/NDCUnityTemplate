@@ -49,6 +49,9 @@ jobs:
       upload-artifact: true
       deploy-target: none
       release-mode: false
+      workflow-repository: dyCuong03/unity-build-workflows
+      workflow-ref: main
+      image-namespace: dyCuong03/unity-editor
     secrets:
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
@@ -75,6 +78,9 @@ jobs:
       upload-artifact: true
       deploy-target: none
       release-mode: false
+      workflow-repository: dyCuong03/unity-build-workflows
+      workflow-ref: main
+      image-namespace: dyCuong03/unity-editor
     secrets:
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
@@ -98,6 +104,9 @@ jobs:
       build-addressables: true
       upload-artifact: true
       release-mode: false
+      workflow-repository: dyCuong03/unity-build-workflows
+      workflow-ref: main
+      image-namespace: dyCuong03/unity-editor
     secrets:
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
