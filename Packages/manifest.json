@@ -16,6 +16,7 @@
     }
   ],
   "dependencies": {
+    "com.company.build-pipeline": "https://github.com/dyCuong03/unity-build-workflows.git?path=/unity-package/Packages/com.company.build-pipeline#main",
     "com.cysharp.messagepipe": "1.8.1",
     "com.cysharp.messagepipe.vcontainer": "1.8.1",
     "com.cysharp.unitask": "2.5.10",

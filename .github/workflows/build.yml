@@ -1,21 +1,26 @@
 name: Unity CI
 
-# Docker-only caller workflow. Delegates to the reusable workflows in
-# dyCuong03/unity-build-workflows. All Unity operations run inside containers.
+# Caller workflow. Delegates to the reusable workflows in
+# dyCuong03/unity-build-workflows.
+# Docker platforms (Android, WebGL, Linux64, LinuxServer) run inside containers on ubuntu-latest.
+# iOS runs natively on a self-hosted macOS runner (macos-unity-xcode).
 #
-# Required secrets (repo Settings → Secrets and variables → Actions):
-#   UNITY_LICENSE     — Unity .ulf license content (base64), OR
-#   UNITY_EMAIL / UNITY_PASSWORD — account activation
+# Required secrets (repo Settings > Secrets and variables > Actions):
+#   UNITY_LICENSE     -- Unity .ulf license content (base64), OR
+#   UNITY_EMAIL / UNITY_PASSWORD -- account activation
 #
 # Platform-specific secrets:
 #   Android sign:   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASS, ANDROID_KEY_ALIAS, ANDROID_KEY_PASS
 #   WebGL deploy:   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID
+#   iOS sign:       IOS_DISTRIBUTION_CERTIFICATE_BASE64, IOS_DISTRIBUTION_CERTIFICATE_PASSWORD,
+#                   IOS_PROVISIONING_PROFILE_BASE64
+#   iOS release:    APP_STORE_CONNECT_KEY_ID, APP_STORE_CONNECT_ISSUER_ID, APP_STORE_CONNECT_PRIVATE_KEY
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, staging, 'release-*']
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
     inputs:
       environment:
@@ -29,19 +34,33 @@ on:
         required: false
         default: Android
         type: choice
-        options: [Android, WebGL, Linux64, LinuxServer]
+        options: [Android, WebGL, Linux64, LinuxServer, iOS]
+
+# Derive environment from branch when not explicitly set
+env:
+  DEFAULT_ENV: >-
+    ${{
+      github.ref_name == 'main' && 'production' ||
+      startsWith(github.ref_name, 'release-') && 'staging' ||
+      github.ref_name == 'staging' && 'staging' ||
+      'development'
+    }}
 
 jobs:
-  # ── Android (Docker, ubuntu-latest) ─────────────────────────────────────
+  # -- Android (Docker, ubuntu-latest) ----------------------------------------
   build-android:
     name: Android
-    if: ${{ inputs.target-platform == 'Android' || github.event_name != 'workflow_dispatch' }}
+    if: >-
+      ${{
+        github.event_name != 'workflow_dispatch' ||
+        inputs.target-platform == 'Android'
+      }}
     uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build.yml@main
     with:
       project-path: '.'
       unity-version: '6000.0.26f1'
       target-platform: Android
-      environment: ${{ inputs.environment || 'development' }}
+      environment: ${{ inputs.environment || github.ref_name == 'main' && 'production' || startsWith(github.ref_name, 'release-') && 'staging' || github.ref_name == 'staging' && 'staging' || 'development' }}
       build-config-path: BuildConfig
       test-level: editmode
       cache-mode: safe
@@ -51,7 +70,7 @@ jobs:
       release-mode: false
       workflow-repository: dyCuong03/unity-build-workflows
       workflow-ref: main
-      image-namespace: dyCuong03
+      image-namespace: dycuong03
       image-name: unity-editor
     secrets:
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -62,10 +81,14 @@ jobs:
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       ANDROID_KEY_PASS: ${{ secrets.ANDROID_KEY_PASS }}
 
-  # ── WebGL (Docker, ubuntu-latest) ───────────────────────────────────────
+  # -- WebGL (Docker, ubuntu-latest) ------------------------------------------
   build-webgl:
     name: WebGL
-    if: ${{ inputs.target-platform == 'WebGL' }}
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' &&
+        inputs.target-platform == 'WebGL'
+      }}
     uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build.yml@main
     with:
       project-path: '.'
@@ -81,7 +104,7 @@ jobs:
       release-mode: false
       workflow-repository: dyCuong03/unity-build-workflows
       workflow-ref: main
-      image-namespace: dyCuong03
+      image-namespace: dycuong03
       image-name: unity-editor
     secrets:
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -90,10 +113,14 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-  # ── Linux64 / LinuxServer (Docker, ubuntu-latest) ───────────────────────
+  # -- Linux64 / LinuxServer (Docker, ubuntu-latest) --------------------------
   build-linux:
     name: Linux
-    if: ${{ inputs.target-platform == 'Linux64' || inputs.target-platform == 'LinuxServer' }}
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' &&
+        (inputs.target-platform == 'Linux64' || inputs.target-platform == 'LinuxServer')
+      }}
     uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build.yml@main
     with:
       project-path: '.'
@@ -108,9 +135,45 @@ jobs:
       release-mode: false
       workflow-repository: dyCuong03/unity-build-workflows
       workflow-ref: main
-      image-namespace: dyCuong03
+      image-namespace: dycuong03
       image-name: unity-editor
     secrets:
       UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
       UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+
+  # -- iOS (macOS native, self-hosted runner: macos-unity-xcode) ---------------
+  build-ios:
+    name: iOS
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' &&
+        inputs.target-platform == 'iOS'
+      }}
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build.yml@main
+    with:
+      project-path: '.'
+      unity-version: '6000.0.26f1'
+      target-platform: iOS
+      environment: ${{ inputs.environment || 'development' }}
+      build-config-path: BuildConfig
+      test-level: none
+      cache-mode: safe
+      build-addressables: true
+      upload-artifact: true
+      release-mode: false
+      workflow-repository: dyCuong03/unity-build-workflows
+      workflow-ref: main
+      image-namespace: dycuong03
+      image-name: unity-editor
+      ios-runner-label: macos-unity-xcode
+    secrets:
+      UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+      IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
+      IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+      IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+      APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
