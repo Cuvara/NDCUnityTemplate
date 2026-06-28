@@ -4,6 +4,8 @@ name: License Check
 # See: https://game.ci/docs/github/activation
 
 on:
+  push:
+    branches: [feature/license-check]
   workflow_dispatch:
 
 jobs:
