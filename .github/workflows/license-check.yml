@@ -7,14 +7,12 @@ name: License Check
 # See: https://game.ci/docs/github/activation
 
 on:
-  push:
-    branches: [feature/license-check]
   workflow_dispatch:
 
 jobs:
   license:
     name: Check Unity License
-    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-license-check.yml@feature/license-check
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-license-check.yml@main
     with:
       unity-version: '6000.0.26f1'
     secrets:
