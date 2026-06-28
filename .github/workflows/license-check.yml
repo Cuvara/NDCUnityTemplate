@@ -1,6 +1,9 @@
 name: License Check
 
-# Verify Unity license or show setup instructions.
+# Verify Unity activation strategy and show setup instructions if needed.
+#
+# Unity Personal/free: uses UNITY_EMAIL + UNITY_PASSWORD (account activation)
+# UNITY_LICENSE (.ulf) is optional — only needed as fallback or override.
 # See: https://game.ci/docs/github/activation
 
 on:
@@ -18,3 +21,4 @@ jobs:
       UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
       UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
       UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+      UNITY_SERIAL:   ${{ secrets.UNITY_SERIAL }}
