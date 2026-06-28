@@ -1,0 +1,13 @@
+name: Generate Docker License
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-generate-license.yml@main
+    with:
+      unity-version: '6000.0.26f1'
+    secrets:
+      UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
