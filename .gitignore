@@ -77,3 +77,9 @@ crashlytics-build.properties
 # Cache file 
 .idea/
 .vscode/
+
+# Unity license files — never commit
+*.ulf
+*.alf
+Unity_lic.*
+UnityEntitlementLicense.xml

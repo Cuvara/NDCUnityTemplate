@@ -1,0 +1,68 @@
+name: GameCI Baseline Unity Personal
+
+# Reference test: prove whether Unity Personal/free activates in Docker on a
+# GitHub-hosted runner using the standard GameCI flow (game-ci/unity-builder),
+# independent of the custom unity-build-workflows toolkit.
+#
+# Secrets used (values never logged):
+#   UNITY_LICENSE  — raw .ulf contents
+#   UNITY_EMAIL
+#   UNITY_PASSWORD
+#
+# Manual only. Does not run on push/PR. Does not upload license files.
+
+on:
+  workflow_dispatch:
+    inputs:
+      targetPlatform:
+        description: Unity target platform
+        required: true
+        default: StandaloneLinux64
+        type: choice
+        options:
+          - StandaloneLinux64
+          - Android
+          - WebGL
+
+jobs:
+  baseline-build:
+    name: GameCI Baseline ${{ inputs.targetPlatform }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk /opt/ghc || true
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+          submodules: recursive
+
+      - name: Cache Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ runner.os }}-${{ inputs.targetPlatform }}-${{ hashFiles('ProjectSettings/ProjectVersion.txt', 'Packages/manifest.json', 'Packages/packages-lock.json') }}
+          restore-keys: |
+            Library-${{ runner.os }}-${{ inputs.targetPlatform }}-
+
+      - name: Build with GameCI
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          targetPlatform: ${{ inputs.targetPlatform }}
+          unityVersion: 6000.0.26f1
+          allowDirtyBuild: true
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gameci-baseline-${{ inputs.targetPlatform }}
+          path: build
+          if-no-files-found: warn
+          retention-days: 7
