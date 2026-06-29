@@ -1,0 +1,37 @@
+name: Unity Build
+
+# Production multi-platform Unity build for NDC-Unity-Template.
+#
+# Delegates to the toolkit's GameCI-backed reusable workflow, which runs
+# game-ci/unity-builder (the supported Unity Personal/free Docker path).
+# The toolkit owns platform selection, Unity-version single-source-of-truth
+# (ProjectSettings/ProjectVersion.txt), artifacts, and reporting.
+#
+# iOS is deferred — it needs a self-hosted macOS runner (not provisioned).
+# See unity-build-workflows/docs/GITHUB_ACTIONS_BUILD_RUNBOOK.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: Platform(s) to build
+        required: false
+        default: All
+        type: choice
+        options:
+          - All
+          - Android
+          - WebGL
+          - Linux64
+          - LinuxServer
+
+jobs:
+  build:
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-build-gameci.yml@main
+    with:
+      platforms: ${{ inputs.platforms }}
+      project-path: '.'
+    secrets:
+      UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
+      UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
+      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
