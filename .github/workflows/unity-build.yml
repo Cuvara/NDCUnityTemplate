@@ -147,7 +147,7 @@ jobs:
         env:
           OVERRIDE: ${{ inputs.unity-version }}
           PROJECT_PATH: '.'
-          TOOLKIT_REF: 'feature/explicit-platform-jobs'
+          TOOLKIT_REF: 'main'
         run: |
           set -euo pipefail
           PV="${PROJECT_PATH%/}/ProjectSettings/ProjectVersion.txt"
@@ -250,7 +250,7 @@ jobs:
       !cancelled() &&
       needs.validate-project.result == 'success' &&
       needs.resolve-config.outputs.run-tests == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-unity-tests.yml@feature/explicit-platform-jobs
+    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-unity-tests.yml@main
     with:
       unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
       test-mode:           ${{ needs.resolve-config.outputs.test-mode }}
@@ -276,7 +276,7 @@ jobs:
       !cancelled() &&
       needs.validate-project.result == 'success' &&
       needs.resolve-config.outputs.build-addressables == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@feature/explicit-platform-jobs
+    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
     with:
       platform:            Addressables
       unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
@@ -303,7 +303,7 @@ jobs:
       needs.validate-project.result == 'success' &&
       (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
       needs.resolve-config.outputs.build-android == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@feature/explicit-platform-jobs
+    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
     with:
       platform:            Android
       unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
@@ -330,7 +330,7 @@ jobs:
       needs.validate-project.result == 'success' &&
       (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
       needs.resolve-config.outputs.build-webgl == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@feature/explicit-platform-jobs
+    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
     with:
       platform:            WebGL
       unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
@@ -357,7 +357,7 @@ jobs:
       needs.validate-project.result == 'success' &&
       (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
       needs.resolve-config.outputs.build-linux64 == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@feature/explicit-platform-jobs
+    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
     with:
       platform:            Linux64
       unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
@@ -384,7 +384,7 @@ jobs:
       needs.validate-project.result == 'success' &&
       (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
       needs.resolve-config.outputs.build-linuxserver == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@feature/explicit-platform-jobs
+    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
     with:
       platform:            LinuxServer
       unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
@@ -416,7 +416,7 @@ jobs:
       needs.validate-project.result == 'success' &&
       (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
       needs.resolve-config.outputs.build-ios == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@feature/explicit-platform-jobs
+    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
     with:
       platform:            iOS
       unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
