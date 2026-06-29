@@ -12,37 +12,66 @@ This project uses the
 git submodule) for all CI builds. Unity operations run inside pinned Docker
 containers on GitHub Actions — no local Unity installation is required for CI.
 
+The active build workflow is **`unity-build.yml`** (explicit-platform-jobs flow).
+Each platform is a separate named job in the GitHub Actions UI — independently
+retryable and independently colour-coded.
+
+See [unity-build-workflows/docs/EXPLICIT\_PLATFORM\_FLOW.md](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md)
+for a full guide to the job graph, inputs, activation, and platform selection rules.
+
 ### Triggering builds manually
 
 ```bash
-# Android (default)
-gh workflow run build.yml \
+# Android
+gh workflow run unity-build.yml \
   --repo dyCuong03/NDC-Unity-Template \
   --ref main \
   -f platform=Android
 
 # WebGL
-gh workflow run build.yml \
+gh workflow run unity-build.yml \
   --repo dyCuong03/NDC-Unity-Template \
   --ref main \
   -f platform=WebGL
 
 # Linux64
-gh workflow run build.yml \
+gh workflow run unity-build.yml \
   --repo dyCuong03/NDC-Unity-Template \
   --ref main \
   -f platform=Linux64
 
-# All Docker platforms at once
-gh workflow run build.yml \
+# Linux Dedicated Server
+gh workflow run unity-build.yml \
+  --repo dyCuong03/NDC-Unity-Template \
+  --ref main \
+  -f platform=LinuxServer
+
+# All platforms at once
+gh workflow run unity-build.yml \
   --repo dyCuong03/NDC-Unity-Template \
   --ref main \
   -f platform=All
 ```
 
 Supported platforms: **Android**, **WebGL**, **Linux64**, **LinuxServer**.
-iOS is deferred (requires a self-hosted macOS runner — see
-[docs/GITHUB\_ACTIONS\_BUILD\_RUNBOOK.md](unity-build-workflows/docs/GITHUB_ACTIONS_BUILD_RUNBOOK.md#10-iosmacos-runner-limitations)).
+**iOS** requires a registered `[self-hosted, macOS, unity]` runner — it is
+**blocked** until one is provisioned (see
+[EXPLICIT\_PLATFORM\_FLOW.md § iOS](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md#6-ios-build--special-requirements)
+and
+[GITHUB\_ACTIONS\_BUILD\_RUNBOOK.md § 10](unity-build-workflows/docs/GITHUB_ACTIONS_BUILD_RUNBOOK.md#10-iosmacos-runner-limitations)).
+
+### Key dispatch inputs
+
+| Input | Default | Description |
+|---|---|---|
+| `platform` | `All` | `All`, `Android`, `WebGL`, `Linux64`, `LinuxServer`, `iOS` |
+| `run-tests` | `false` | Run Unity tests before builds |
+| `build-addressables` | `false` | Build Addressables catalog before platform builds |
+| `environment` | `production` | `production`, `staging`, `development` |
+| `runner-mode` | `docker` | `docker`, `self-hosted-windows` |
+| `clean-build` | `false` | Force full `Library/` cache delete |
+
+Full input reference: [EXPLICIT\_PLATFORM\_FLOW.md § 2](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md#2-workflow-dispatch-inputs).
 
 ### Unity version
 
@@ -101,6 +130,7 @@ gh run download <RUN_ID> --repo dyCuong03/NDC-Unity-Template
 
 | Document | Description |
 |---|---|
+| [unity-build-workflows/docs/EXPLICIT\_PLATFORM\_FLOW.md](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md) | **New** — explicit-platform-jobs flow: job graph, dispatch inputs, activation, platform selection, iOS requirements |
 | [unity-build-workflows/docs/UNITY\_PERSONAL\_DOCKER\_LICENSE.md](unity-build-workflows/docs/UNITY_PERSONAL_DOCKER_LICENSE.md) | Unity Personal/free Docker licensing — `personal-combined` strategy, secret setup, troubleshooting |
 | [unity-build-workflows/docs/UNITY\_VERSION\_UPGRADE.md](unity-build-workflows/docs/UNITY_VERSION_UPGRADE.md) | Step-by-step Unity version upgrade checklist |
 | [unity-build-workflows/docs/GITHUB\_ACTIONS\_BUILD\_RUNBOOK.md](unity-build-workflows/docs/GITHUB_ACTIONS_BUILD_RUNBOOK.md) | Operational runbook — triggering builds, reading logs, artifacts, common errors |
