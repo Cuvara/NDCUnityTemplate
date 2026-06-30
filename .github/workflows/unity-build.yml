@@ -68,6 +68,13 @@ on:
         default: false
         type: boolean
 
+      android-export:
+        description: "Android output: apk (installable) or aab (Play Store bundle)"
+        required: false
+        default: apk
+        type: choice
+        options: [apk, aab]
+
   push:
     branches: [develop, staging, 'release-*']
 
@@ -92,5 +99,6 @@ jobs:
       runner-mode:         ${{ inputs.runner-mode         || '' }}
       unity-version:       ${{ inputs.unity-version       || '' }}
       clean-build:         ${{ inputs.clean-build         || false }}
+      android-export:      ${{ inputs.android-export      || 'apk' }}
       project-path:        '.'
       toolkit-ref:         'main'
