@@ -124,6 +124,7 @@ jobs:
       # ── Flow resolver outputs ───────────────────────────────────────────────
       flow-type:          ${{ steps.flow.outputs.flow-type }}
       environment:        ${{ steps.flow.outputs.environment }}
+      gh-environment:     ${{ steps.flow.outputs.gh-environment }}
       run-tests:          ${{ steps.flow.outputs.run-tests }}
       test-mode:          ${{ steps.flow.outputs.test-mode }}
       build-addressables: ${{ steps.flow.outputs.build-addressables }}
@@ -461,6 +462,12 @@ jobs:
       - build-ios
     if: always()
     runs-on: ubuntu-latest
+    # GitHub deployment environment for this run (development | staging |
+    # production). Empty on pull_request flows => no environment, no deployment,
+    # and production-scoped secrets/approvals are never exposed to PRs.
+    # Production is additionally guarded by a deployment-branch policy (release-*)
+    # configured on the environment in repo Settings.
+    environment: ${{ needs.resolve-config.outputs.gh-environment }}
     steps:
       - name: Write step summary
         shell: bash
