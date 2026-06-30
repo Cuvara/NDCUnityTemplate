@@ -133,6 +133,7 @@ jobs:
       build-linuxserver:  ${{ steps.flow.outputs.build-linuxserver }}
       build-ios:          ${{ steps.flow.outputs.build-ios }}
       signing:            ${{ steps.flow.outputs.signing }}
+      platform-source:    ${{ steps.flow.outputs.platform-source }}
     steps:
       - name: Checkout (shallow — only needs ProjectVersion.txt)
         uses: actions/checkout@v4
@@ -189,6 +190,17 @@ jobs:
           IN_RUN_TESTS:          ${{ inputs.run-tests || '' }}
           IN_TEST_MODE:          ${{ inputs.test-mode || '' }}
           IN_BUILD_ADDRESSABLES: ${{ inputs.build-addressables || '' }}
+          # ── Repository Variables (optional platform/config overrides) ──────
+          VAR_DEVELOP_BUILD_PLATFORMS:     ${{ vars.DEVELOP_BUILD_PLATFORMS || '' }}
+          VAR_STAGING_BUILD_PLATFORMS:     ${{ vars.STAGING_BUILD_PLATFORMS || '' }}
+          VAR_RELEASE_BUILD_PLATFORMS:     ${{ vars.RELEASE_BUILD_PLATFORMS || '' }}
+          VAR_DEVELOP_RUN_TESTS:          ${{ vars.DEVELOP_RUN_TESTS || '' }}
+          VAR_STAGING_RUN_TESTS:          ${{ vars.STAGING_RUN_TESTS || '' }}
+          VAR_RELEASE_RUN_TESTS:          ${{ vars.RELEASE_RUN_TESTS || '' }}
+          VAR_DEVELOP_BUILD_ADDRESSABLES: ${{ vars.DEVELOP_BUILD_ADDRESSABLES || '' }}
+          VAR_STAGING_BUILD_ADDRESSABLES: ${{ vars.STAGING_BUILD_ADDRESSABLES || '' }}
+          VAR_RELEASE_BUILD_ADDRESSABLES: ${{ vars.RELEASE_BUILD_ADDRESSABLES || '' }}
+          VAR_DEFAULT_RUNNER_MODE:        ${{ vars.DEFAULT_RUNNER_MODE || '' }}
         run: |
           set -euo pipefail
           echo "Flow resolver: event=${EVENT_NAME} ref=${REF_NAME} base=${BASE_REF:-<none>}"
@@ -474,6 +486,11 @@ jobs:
           SEL_TESTS:      ${{ needs.resolve-config.outputs.run-tests }}
           TEST_MODE:      ${{ needs.resolve-config.outputs.test-mode }}
           SIGNING:        ${{ needs.resolve-config.outputs.signing }}
+          PLATFORM_SOURCE: ${{ needs.resolve-config.outputs.platform-source }}
+          # ── Repository Variables (for report display) ─────────────────────
+          VAR_DEV_PLAT:   ${{ vars.DEVELOP_BUILD_PLATFORMS || '' }}
+          VAR_STG_PLAT:   ${{ vars.STAGING_BUILD_PLATFORMS || '' }}
+          VAR_REL_PLAT:   ${{ vars.RELEASE_BUILD_PLATFORMS || '' }}
           # ── Job results ────────────────────────────────────────────────────
           R_VALIDATE:    ${{ needs.validate-project.result }}
           R_TESTS:       ${{ needs.unity-tests.result }}
@@ -541,6 +558,7 @@ jobs:
             echo "| Environment | \`${ENVIRONMENT:-unknown}\` |"
             echo "| Runner mode | \`${RUNNER_MODE}\` |"
             echo "| Signing | \`${SIGNING:-none}\` |"
+            echo "| Platform source | \`${PLATFORM_SOURCE:-default}\` |"
             echo ""
             echo "### Platform Selection"
             echo "| | Platforms |"
@@ -548,6 +566,17 @@ jobs:
             echo "| Selected | ${SELECTED} |"
             echo "| Skipped  | ${SKIPPED} |"
             echo "| Blockers | ${BLOCKERS} |"
+            echo ""
+            # Show repo variable info when platform-source is 'variable'
+            if [ "${PLATFORM_SOURCE}" = "variable" ]; then
+              echo "### Repository Variables"
+              echo "| Variable | Value |"
+              echo "|---|---|"
+              [ -n "${VAR_DEV_PLAT}" ] && echo "| \`DEVELOP_BUILD_PLATFORMS\` | \`${VAR_DEV_PLAT}\` |"
+              [ -n "${VAR_STG_PLAT}" ] && echo "| \`STAGING_BUILD_PLATFORMS\` | \`${VAR_STG_PLAT}\` |"
+              [ -n "${VAR_REL_PLAT}" ] && echo "| \`RELEASE_BUILD_PLATFORMS\` | \`${VAR_REL_PLAT}\` |"
+              echo ""
+            fi
             echo ""
             echo "### Job Results"
             echo ""
