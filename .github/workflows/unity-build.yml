@@ -1,15 +1,10 @@
 name: Unity Build
 
-# Explicit per-platform Unity build for NDC-Unity-Template.
-#
-# Each platform appears as a distinct job in the GitHub Actions UI.
-# All build logic is delegated to toolkit reusable workflows:
-#   - reusable-build-platform.yml  (Android / WebGL / Linux64 / LinuxServer / iOS / Addressables)
-#   - reusable-unity-tests.yml     (EditMode / PlayMode / All)
+# Thin caller — delegates ALL orchestration to the toolkit reusable pipeline.
+# Edit build logic in: unity-build-workflows/.github/workflows/unity-pipeline.yml
 #
 # Architecture: see unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW_SPEC.md
 # Branch flow:  see unity-build-workflows/docs/BRANCH_FLOW_CONTRACT.md
-# Activation:   see unity-build-workflows/docs/UNITY_PERSONAL_DOCKER_LICENSE.md
 
 on:
   workflow_dispatch:
@@ -19,23 +14,14 @@ on:
         required: false
         default: All
         type: choice
-        options:
-          - All
-          - Android
-          - WebGL
-          - Linux64
-          - LinuxServer
-          - iOS
+        options: [All, Android, WebGL, Linux64, LinuxServer, iOS]
 
       environment:
         description: "Build environment (passed to Unity)"
         required: false
         default: production
         type: choice
-        options:
-          - production
-          - staging
-          - development
+        options: [production, staging, development]
 
       run-tests:
         description: "Run EditMode/PlayMode tests before building"
@@ -48,10 +34,7 @@ on:
         required: false
         default: All
         type: choice
-        options:
-          - EditMode
-          - PlayMode
-          - All
+        options: [EditMode, PlayMode, All]
 
       build-addressables:
         description: "Run Addressable build pipeline before platform builds"
@@ -64,23 +47,14 @@ on:
         required: false
         default: auto
         type: choice
-        options:
-          - auto
-          - manual-license
-          - account
-          - serial
-          - preactivated
-          - none
+        options: [auto, manual-license, account, serial, preactivated, none]
 
       runner-mode:
         description: "Execution lane"
         required: false
         default: docker
         type: choice
-        options:
-          - docker
-          - self-hosted-windows
-          - auto
+        options: [docker, self-hosted-windows, auto]
 
       unity-version:
         description: "Override Unity version (blank = use ProjectSettings/ProjectVersion.txt)"
@@ -100,610 +74,23 @@ on:
   pull_request:
     branches: [develop, staging, 'release-*']
 
-# ── Concurrency: cancel stale runs on the same branch + event ───────────────
 concurrency:
   group: unity-build-${{ github.ref }}-${{ github.event_name }}-${{ inputs.platform || 'auto' }}
   cancel-in-progress: true
 
 jobs:
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 1: resolve-config
-  #   Reads ProjectVersion.txt (SSOT) and runs resolve_build_flow.sh (toolkit)
-  #   to produce all downstream gating outputs: which platforms to build,
-  #   environment, test flags, flow-type, signing, etc.
-  # ════════════════════════════════════════════════════════════════════════════
-  resolve-config:
-    name: Resolve Config
-    runs-on: ubuntu-latest
-    outputs:
-      # ── Unity / project ────────────────────────────────────────────────────
-      unity-version:      ${{ steps.version.outputs.version }}
-      project-path:       ${{ steps.version.outputs.project-path }}
-      toolkit-ref:        ${{ steps.version.outputs.toolkit-ref }}
-      # ── Flow resolver outputs ───────────────────────────────────────────────
-      flow-type:          ${{ steps.flow.outputs.flow-type }}
-      environment:        ${{ steps.flow.outputs.environment }}
-      gh-environment:     ${{ steps.flow.outputs.gh-environment }}
-      run-tests:          ${{ steps.flow.outputs.run-tests }}
-      test-mode:          ${{ steps.flow.outputs.test-mode }}
-      build-addressables: ${{ steps.flow.outputs.build-addressables }}
-      build-android:      ${{ steps.flow.outputs.build-android }}
-      build-webgl:        ${{ steps.flow.outputs.build-webgl }}
-      build-linux64:      ${{ steps.flow.outputs.build-linux64 }}
-      build-linuxserver:  ${{ steps.flow.outputs.build-linuxserver }}
-      build-ios:          ${{ steps.flow.outputs.build-ios }}
-      signing:            ${{ steps.flow.outputs.signing }}
-      platform-source:    ${{ steps.flow.outputs.platform-source }}
-    steps:
-      - name: Checkout (shallow — only needs ProjectVersion.txt)
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            ProjectSettings/ProjectVersion.txt
-          sparse-checkout-cone-mode: false
-
-      - name: Resolve Unity version
-        id: version
-        shell: bash
-        env:
-          OVERRIDE: ${{ inputs.unity-version }}
-          PROJECT_PATH: '.'
-          TOOLKIT_REF: 'main'
-        run: |
-          set -euo pipefail
-          PV="${PROJECT_PATH%/}/ProjectSettings/ProjectVersion.txt"
-          if [ ! -f "$PV" ]; then
-            echo "::error::ProjectVersion.txt not found at ${PV}"
-            exit 1
-          fi
-          PROJECT_VERSION=$(grep '^m_EditorVersion:' "$PV" | awk '{print $2}')
-          echo "Project Unity version (SSOT): ${PROJECT_VERSION}"
-          if [ -n "${OVERRIDE}" ] && [ "${OVERRIDE}" != "${PROJECT_VERSION}" ]; then
-            echo "::error::Unity version mismatch:"
-            echo "::error::  ProjectVersion.txt: ${PROJECT_VERSION}"
-            echo "::error::  Input override:     ${OVERRIDE}"
-            echo "::error::Update ProjectVersion.txt to change the version (it is the SSOT)."
-            exit 1
-          fi
-          RESOLVED="${OVERRIDE:-${PROJECT_VERSION}}"
-          echo "version=${RESOLVED}"        >> "$GITHUB_OUTPUT"
-          echo "project-path=${PROJECT_PATH}" >> "$GITHUB_OUTPUT"
-          echo "toolkit-ref=${TOOLKIT_REF}"   >> "$GITHUB_OUTPUT"
-          echo "Resolved: version=${RESOLVED} project-path=${PROJECT_PATH} toolkit-ref=${TOOLKIT_REF}"
-
-      - name: Checkout toolkit (for resolve_build_flow.sh)
-        uses: actions/checkout@v4
-        with:
-          repository: dyCuong03/unity-build-workflows
-          ref: ${{ steps.version.outputs.toolkit-ref }}
-          path: .toolkit
-
-      - name: Resolve build flow
-        id: flow
-        shell: bash
-        env:
-          EVENT_NAME:            ${{ github.event_name }}
-          REF_NAME:              ${{ github.ref_name }}
-          BASE_REF:              ${{ github.base_ref }}
-          IN_PLATFORM:           ${{ inputs.platform || '' }}
-          IN_ENVIRONMENT:        ${{ inputs.environment || '' }}
-          IN_RUN_TESTS:          ${{ inputs.run-tests || '' }}
-          IN_TEST_MODE:          ${{ inputs.test-mode || '' }}
-          IN_BUILD_ADDRESSABLES: ${{ inputs.build-addressables || '' }}
-          # ── Repository Variables (optional platform/config overrides) ──────
-          VAR_DEVELOP_BUILD_PLATFORMS:     ${{ vars.DEVELOP_BUILD_PLATFORMS || '' }}
-          VAR_STAGING_BUILD_PLATFORMS:     ${{ vars.STAGING_BUILD_PLATFORMS || '' }}
-          VAR_RELEASE_BUILD_PLATFORMS:     ${{ vars.RELEASE_BUILD_PLATFORMS || '' }}
-          VAR_DEVELOP_RUN_TESTS:          ${{ vars.DEVELOP_RUN_TESTS || '' }}
-          VAR_STAGING_RUN_TESTS:          ${{ vars.STAGING_RUN_TESTS || '' }}
-          VAR_RELEASE_RUN_TESTS:          ${{ vars.RELEASE_RUN_TESTS || '' }}
-          VAR_DEVELOP_BUILD_ADDRESSABLES: ${{ vars.DEVELOP_BUILD_ADDRESSABLES || '' }}
-          VAR_STAGING_BUILD_ADDRESSABLES: ${{ vars.STAGING_BUILD_ADDRESSABLES || '' }}
-          VAR_RELEASE_BUILD_ADDRESSABLES: ${{ vars.RELEASE_BUILD_ADDRESSABLES || '' }}
-          VAR_DEFAULT_RUNNER_MODE:        ${{ vars.DEFAULT_RUNNER_MODE || '' }}
-        run: |
-          set -euo pipefail
-          echo "Flow resolver: event=${EVENT_NAME} ref=${REF_NAME} base=${BASE_REF:-<none>}"
-          bash .toolkit/scripts/common/resolve_build_flow.sh
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 2: validate-project
-  #   Verifies the Unity project structure is intact before spending build time.
-  # ════════════════════════════════════════════════════════════════════════════
-  validate-project:
-    name: Validate Project
-    needs: [resolve-config]
-    if: needs.resolve-config.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Validate project structure
-        shell: bash
-        env:
-          PROJECT_PATH:  ${{ needs.resolve-config.outputs.project-path }}
-          UNITY_VERSION: ${{ needs.resolve-config.outputs.unity-version }}
-        run: |
-          set -euo pipefail
-          ERRORS=0
-
-          check() {
-            local path="$1" label="$2"
-            if [ ! -e "${PROJECT_PATH%/}/${path}" ]; then
-              echo "::error::Missing ${label}: ${PROJECT_PATH%/}/${path}"
-              ERRORS=$((ERRORS + 1))
-            else
-              echo "  ✓ ${label}"
-            fi
-          }
-
-          echo "Validating Unity project at '${PROJECT_PATH}' (Unity ${UNITY_VERSION})"
-          check "ProjectSettings/ProjectVersion.txt" "ProjectVersion.txt"
-          check "Packages/manifest.json"             "Packages/manifest.json"
-          check "Assets"                             "Assets directory"
-
-          if [ "${ERRORS}" -gt 0 ]; then
-            echo "::error::Project validation failed (${ERRORS} error(s))"
-            exit 1
-          fi
-          echo "Project validation passed."
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 3: unity-tests
-  #   Runs EditMode / PlayMode / All tests.
-  #   Gated on resolve-config.outputs.run-tests (set by flow resolver).
-  #   Does NOT gate the build jobs — tests and builds are independent siblings.
-  # ════════════════════════════════════════════════════════════════════════════
-  unity-tests:
-    name: Unity Tests (${{ needs.resolve-config.outputs.test-mode }})
-    needs: [resolve-config, validate-project]
-    if: >-
-      !cancelled() &&
-      needs.validate-project.result == 'success' &&
-      needs.resolve-config.outputs.run-tests == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-unity-tests.yml@main
-    with:
-      unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
-      test-mode:           ${{ needs.resolve-config.outputs.test-mode }}
-      project-path:        ${{ needs.resolve-config.outputs.project-path }}
-      runner-mode:         ${{ inputs.runner-mode || 'docker' }}
-      activation-strategy: ${{ inputs.activation-strategy || 'auto' }}
-      toolkit-ref:         ${{ needs.resolve-config.outputs.toolkit-ref }}
-    secrets:
-      UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 4: build-addressables
-  #   Pre-builds the Addressable catalog and bundles.
-  #   Gated on resolve-config.outputs.build-addressables (set by flow resolver).
-  #   Platform builds depend on this job (success OR skipped).
-  # ════════════════════════════════════════════════════════════════════════════
-  build-addressables:
-    name: Build Addressables
-    needs: [resolve-config, validate-project]
-    if: >-
-      !cancelled() &&
-      needs.validate-project.result == 'success' &&
-      needs.resolve-config.outputs.build-addressables == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
-    with:
-      platform:            Addressables
-      unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
-      project-path:        ${{ needs.resolve-config.outputs.project-path }}
-      environment:         ${{ needs.resolve-config.outputs.environment }}
-      runner-mode:         ${{ inputs.runner-mode || 'docker' }}
-      activation-strategy: ${{ inputs.activation-strategy || 'auto' }}
-      clean-build:         ${{ inputs.clean-build || false }}
-      build-addressables:  false
-      toolkit-ref:         ${{ needs.resolve-config.outputs.toolkit-ref }}
-    secrets:
-      UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 5: build-android
-  # ════════════════════════════════════════════════════════════════════════════
-  build-android:
-    name: Build Android
-    needs: [resolve-config, validate-project, build-addressables]
-    if: >-
-      !cancelled() &&
-      needs.validate-project.result == 'success' &&
-      (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
-      needs.resolve-config.outputs.build-android == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
-    with:
-      platform:            Android
-      unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
-      project-path:        ${{ needs.resolve-config.outputs.project-path }}
-      environment:         ${{ needs.resolve-config.outputs.environment }}
-      runner-mode:         ${{ inputs.runner-mode || 'docker' }}
-      activation-strategy: ${{ inputs.activation-strategy || 'auto' }}
-      clean-build:         ${{ inputs.clean-build || false }}
-      build-addressables:  false
-      toolkit-ref:         ${{ needs.resolve-config.outputs.toolkit-ref }}
-    secrets:
-      UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 6: build-webgl
-  # ════════════════════════════════════════════════════════════════════════════
-  build-webgl:
-    name: Build WebGL
-    needs: [resolve-config, validate-project, build-addressables]
-    if: >-
-      !cancelled() &&
-      needs.validate-project.result == 'success' &&
-      (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
-      needs.resolve-config.outputs.build-webgl == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
-    with:
-      platform:            WebGL
-      unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
-      project-path:        ${{ needs.resolve-config.outputs.project-path }}
-      environment:         ${{ needs.resolve-config.outputs.environment }}
-      runner-mode:         ${{ inputs.runner-mode || 'docker' }}
-      activation-strategy: ${{ inputs.activation-strategy || 'auto' }}
-      clean-build:         ${{ inputs.clean-build || false }}
-      build-addressables:  false
-      toolkit-ref:         ${{ needs.resolve-config.outputs.toolkit-ref }}
-    secrets:
-      UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 7: build-linux64
-  # ════════════════════════════════════════════════════════════════════════════
-  build-linux64:
-    name: Build Linux64
-    needs: [resolve-config, validate-project, build-addressables]
-    if: >-
-      !cancelled() &&
-      needs.validate-project.result == 'success' &&
-      (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
-      needs.resolve-config.outputs.build-linux64 == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
-    with:
-      platform:            Linux64
-      unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
-      project-path:        ${{ needs.resolve-config.outputs.project-path }}
-      environment:         ${{ needs.resolve-config.outputs.environment }}
-      runner-mode:         ${{ inputs.runner-mode || 'docker' }}
-      activation-strategy: ${{ inputs.activation-strategy || 'auto' }}
-      clean-build:         ${{ inputs.clean-build || false }}
-      build-addressables:  false
-      toolkit-ref:         ${{ needs.resolve-config.outputs.toolkit-ref }}
-    secrets:
-      UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 8: build-linuxserver
-  # ════════════════════════════════════════════════════════════════════════════
-  build-linuxserver:
-    name: Build LinuxServer
-    needs: [resolve-config, validate-project, build-addressables]
-    if: >-
-      !cancelled() &&
-      needs.validate-project.result == 'success' &&
-      (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
-      needs.resolve-config.outputs.build-linuxserver == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
-    with:
-      platform:            LinuxServer
-      unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
-      project-path:        ${{ needs.resolve-config.outputs.project-path }}
-      environment:         ${{ needs.resolve-config.outputs.environment }}
-      runner-mode:         ${{ inputs.runner-mode || 'docker' }}
-      activation-strategy: ${{ inputs.activation-strategy || 'auto' }}
-      clean-build:         ${{ inputs.clean-build || false }}
-      build-addressables:  false
-      toolkit-ref:         ${{ needs.resolve-config.outputs.toolkit-ref }}
-    secrets:
-      UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
-      UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
-      UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 9: build-ios
-  #   BLOCKED until a self-hosted macOS runner is provisioned.
-  #   Only triggered when flow resolver sets build-ios=true (manual dispatch only).
-  #   runner-mode HARDCODED to self-hosted-macos regardless of dispatch input.
-  #   If no macOS runner is registered, the reusable sets result=blocked and
-  #   exits 0 (clean skip) — it never fake-passes.
-  # ════════════════════════════════════════════════════════════════════════════
-  build-ios:
-    name: Build iOS
-    needs: [resolve-config, validate-project, build-addressables]
-    if: >-
-      !cancelled() &&
-      needs.validate-project.result == 'success' &&
-      (needs.build-addressables.result == 'success' || needs.build-addressables.result == 'skipped') &&
-      needs.resolve-config.outputs.build-ios == 'true'
-    uses: dyCuong03/unity-build-workflows/.github/workflows/reusable-build-platform.yml@main
-    with:
-      platform:            iOS
-      unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
-      project-path:        ${{ needs.resolve-config.outputs.project-path }}
-      environment:         ${{ needs.resolve-config.outputs.environment }}
-      # iOS ALWAYS uses self-hosted-macos — never docker or self-hosted-windows.
-      runner-mode:         self-hosted-macos
-      # macOS runner has local Unity already activated — no license secrets needed.
-      activation-strategy: preactivated
-      clean-build:         ${{ inputs.clean-build || false }}
-      build-addressables:  false
-      toolkit-ref:         ${{ needs.resolve-config.outputs.toolkit-ref }}
+  pipeline:
+    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
     secrets: inherit
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB 10: final-report
-  #   Always runs. Summarises all job results in the workflow step summary.
-  # ════════════════════════════════════════════════════════════════════════════
-  final-report:
-    name: Final Report
-    needs:
-      - resolve-config
-      - validate-project
-      - unity-tests
-      - build-addressables
-      - build-android
-      - build-webgl
-      - build-linux64
-      - build-linuxserver
-      - build-ios
-    if: always()
-    runs-on: ubuntu-latest
-    # GitHub deployment environment for this run (development | staging |
-    # production). Empty on pull_request flows => no environment, no deployment,
-    # and production-scoped secrets/approvals are never exposed to PRs.
-    # Production is additionally guarded by a deployment-branch policy (release-*)
-    # configured on the environment in repo Settings.
-    environment: ${{ needs.resolve-config.outputs.gh-environment }}
-    steps:
-      - name: Write step summary
-        shell: bash
-        env:
-          # ── Run context ────────────────────────────────────────────────────
-          RUN_ID:        ${{ github.run_id }}
-          COMMIT:        ${{ github.sha }}
-          EVENT_NAME:    ${{ github.event_name }}
-          REF_NAME:      ${{ github.ref_name }}
-          BASE_REF:      ${{ github.base_ref }}
-          # ── Resolved config ────────────────────────────────────────────────
-          UNITY_VERSION: ${{ needs.resolve-config.outputs.unity-version }}
-          FLOW_TYPE:     ${{ needs.resolve-config.outputs.flow-type }}
-          ENVIRONMENT:   ${{ needs.resolve-config.outputs.environment }}
-          RUNNER_MODE:   ${{ inputs.runner-mode || 'docker' }}
-          # ── Resolver platform flags (true/false) ───────────────────────────
-          SEL_ANDROID:    ${{ needs.resolve-config.outputs.build-android }}
-          SEL_WEBGL:      ${{ needs.resolve-config.outputs.build-webgl }}
-          SEL_LINUX64:    ${{ needs.resolve-config.outputs.build-linux64 }}
-          SEL_LINUXSERVER: ${{ needs.resolve-config.outputs.build-linuxserver }}
-          SEL_IOS:        ${{ needs.resolve-config.outputs.build-ios }}
-          SEL_ADDR:       ${{ needs.resolve-config.outputs.build-addressables }}
-          SEL_TESTS:      ${{ needs.resolve-config.outputs.run-tests }}
-          TEST_MODE:      ${{ needs.resolve-config.outputs.test-mode }}
-          SIGNING:        ${{ needs.resolve-config.outputs.signing }}
-          PLATFORM_SOURCE: ${{ needs.resolve-config.outputs.platform-source }}
-          # ── Repository Variables (for report display) ─────────────────────
-          VAR_DEV_PLAT:   ${{ vars.DEVELOP_BUILD_PLATFORMS || '' }}
-          VAR_STG_PLAT:   ${{ vars.STAGING_BUILD_PLATFORMS || '' }}
-          VAR_REL_PLAT:   ${{ vars.RELEASE_BUILD_PLATFORMS || '' }}
-          # ── Job results ────────────────────────────────────────────────────
-          R_VALIDATE:    ${{ needs.validate-project.result }}
-          R_TESTS:       ${{ needs.unity-tests.result }}
-          R_ADDR:        ${{ needs.build-addressables.result }}
-          R_ANDROID:     ${{ needs.build-android.result }}
-          R_WEBGL:       ${{ needs.build-webgl.result }}
-          R_LINUX64:     ${{ needs.build-linux64.result }}
-          R_LINUXSERVER: ${{ needs.build-linuxserver.result }}
-          R_IOS:         ${{ needs.build-ios.result }}
-        run: |
-          emoji() {
-            case "$1" in
-              success)   echo "✅" ;;
-              failure)   echo "❌" ;;
-              skipped)   echo "⏭️" ;;
-              cancelled) echo "🚫" ;;
-              blocked)   echo "⛔" ;;
-              *)         echo "❓" ;;
-            esac
-          }
-
-          # Build selected / skipped platform lists
-          SELECTED="" SKIPPED="" BLOCKERS=""
-          for plat in Android WebGL Linux64 LinuxServer; do
-            var="SEL_${plat^^}"; var="${var//-/}"
-            # map LinuxServer → SEL_LINUXSERVER
-            case "$plat" in
-              Android)     flag="${SEL_ANDROID}" ;;
-              WebGL)       flag="${SEL_WEBGL}" ;;
-              Linux64)     flag="${SEL_LINUX64}" ;;
-              LinuxServer) flag="${SEL_LINUXSERVER}" ;;
-            esac
-            if [ "${flag}" = "true" ]; then
-              SELECTED="${SELECTED:+$SELECTED, }${plat}"
-            else
-              SKIPPED="${SKIPPED:+$SKIPPED, }${plat}"
-            fi
-          done
-          # iOS: only via manual dispatch; mark as blocker if no macOS runner
-          if [ "${SEL_IOS}" = "true" ]; then
-            SELECTED="${SELECTED:+$SELECTED, }iOS"
-            BLOCKERS="iOS requires self-hosted macOS runner (result: ${R_IOS})"
-          else
-            SKIPPED="${SKIPPED:+$SKIPPED, }iOS (auto-excluded)"
-          fi
-          [ -z "${SELECTED}" ] && SELECTED="(none)"
-          [ -z "${SKIPPED}"  ] && SKIPPED="(none)"
-          [ -z "${BLOCKERS}" ] && BLOCKERS="(none)"
-
-          TARGET_BRANCH="${BASE_REF:--}"
-
-          {
-            echo "## Unity Build — Final Report"
-            echo ""
-            echo "### Run Info"
-            echo "| Field | Value |"
-            echo "|---|---|"
-            echo "| Run ID | \`${RUN_ID}\` |"
-            echo "| Commit | \`${COMMIT:0:8}\` |"
-            echo "| Event | \`${EVENT_NAME}\` |"
-            echo "| Branch | \`${REF_NAME}\` |"
-            echo "| Target branch | \`${TARGET_BRANCH}\` |"
-            echo "| Flow type | \`${FLOW_TYPE:-unknown}\` |"
-            echo "| Unity version | \`${UNITY_VERSION:-unknown}\` |"
-            echo "| Environment | \`${ENVIRONMENT:-unknown}\` |"
-            echo "| Runner mode | \`${RUNNER_MODE}\` |"
-            echo "| Signing | \`${SIGNING:-none}\` |"
-            echo "| Platform source | \`${PLATFORM_SOURCE:-default}\` |"
-            echo ""
-            echo "### Platform Selection"
-            echo "| | Platforms |"
-            echo "|---|---|"
-            echo "| Selected | ${SELECTED} |"
-            echo "| Skipped  | ${SKIPPED} |"
-            echo "| Blockers | ${BLOCKERS} |"
-            echo ""
-            # Show repo variable info when platform-source is 'variable'
-            if [ "${PLATFORM_SOURCE}" = "variable" ]; then
-              echo "### Repository Variables"
-              echo "| Variable | Value |"
-              echo "|---|---|"
-              [ -n "${VAR_DEV_PLAT}" ] && echo "| \`DEVELOP_BUILD_PLATFORMS\` | \`${VAR_DEV_PLAT}\` |"
-              [ -n "${VAR_STG_PLAT}" ] && echo "| \`STAGING_BUILD_PLATFORMS\` | \`${VAR_STG_PLAT}\` |"
-              [ -n "${VAR_REL_PLAT}" ] && echo "| \`RELEASE_BUILD_PLATFORMS\` | \`${VAR_REL_PLAT}\` |"
-              echo ""
-            fi
-            echo ""
-            echo "### Job Results"
-            echo ""
-            echo "**Infrastructure**"
-            echo "| Job | Result |"
-            echo "|---|---|"
-            echo "| validate-project | $(emoji "${R_VALIDATE}") \`${R_VALIDATE}\` |"
-            echo ""
-            echo "**Tests** (test-mode: \`${TEST_MODE:-N/A}\`)"
-            echo "| Job | Result | Artifact |"
-            echo "|---|---|---|"
-            echo "| unity-tests | $(emoji "${R_TESTS}") \`${R_TESTS}\` | \`unity-tests-${TEST_MODE:-All}\` |"
-            echo ""
-            echo "**Addressables**"
-            echo "| Job | Result | Artifact |"
-            echo "|---|---|---|"
-            echo "| build-addressables | $(emoji "${R_ADDR}") \`${R_ADDR}\` | \`unity-build-Addressables\` |"
-            echo ""
-            echo "**Platform Builds**"
-            echo "| Platform | Result | Artifact |"
-            echo "|---|---|---|"
-            echo "| Android     | $(emoji "${R_ANDROID}") \`${R_ANDROID}\` | \`unity-build-Android\` |"
-            echo "| WebGL       | $(emoji "${R_WEBGL}") \`${R_WEBGL}\` | \`unity-build-WebGL\` |"
-            echo "| Linux64     | $(emoji "${R_LINUX64}") \`${R_LINUX64}\` | \`unity-build-Linux64\` |"
-            echo "| LinuxServer | $(emoji "${R_LINUXSERVER}") \`${R_LINUXSERVER}\` | \`unity-build-LinuxServer\` |"
-            echo "| iOS         | $(emoji "${R_IOS}") \`${R_IOS}\` | \`unity-build-iOS\` |"
-            echo ""
-            echo "> Log artifacts: \`unity-build-<Platform>-logs\` (retained 14 days)"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          # Fail the report job if any core build failed
-          FAILED=0
-          for result in "${R_VALIDATE}" "${R_ANDROID}" "${R_WEBGL}" "${R_LINUX64}" "${R_LINUXSERVER}"; do
-            [ "${result}" = "failure" ] && FAILED=1
-          done
-          # Tests failure is informational — does not block the report
-          # iOS 'blocked' output is handled in reusable; job itself succeeds
-          if [ "${FAILED}" -eq 1 ]; then
-            echo "::error::One or more build jobs failed. See individual job logs."
-            exit 1
-          fi
-
-  # ════════════════════════════════════════════════════════════════════════════
-  # JOB: notify-discord
-  #   Best-effort delivery of build status + files to a Discord thread.
-  #   Attaches build zips under the size threshold; links oversized ones.
-  #   No-op when DISCORD_WEBHOOK_URL is unset. NEVER fails the pipeline.
-  # ════════════════════════════════════════════════════════════════════════════
-  notify-discord:
-    name: Notify Discord
-    needs:
-      - resolve-config
-      - validate-project
-      - unity-tests
-      - build-addressables
-      - build-android
-      - build-webgl
-      - build-linux64
-      - build-linuxserver
-      - build-ios
-      - final-report
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          pattern: unity-build-*
-          path: ./artifacts
-
-      - name: Derive overall status
-        id: status
-        shell: bash
-        env:
-          R_VALIDATE:    ${{ needs.validate-project.result }}
-          R_ANDROID:     ${{ needs.build-android.result }}
-          R_WEBGL:       ${{ needs.build-webgl.result }}
-          R_LINUX64:     ${{ needs.build-linux64.result }}
-          R_LINUXSERVER: ${{ needs.build-linuxserver.result }}
-        run: |
-          set +e
-          overall=success
-          for r in "$R_VALIDATE" "$R_ANDROID" "$R_WEBGL" "$R_LINUX64" "$R_LINUXSERVER"; do
-            [ "$r" = "cancelled" ] && overall=cancelled
-          done
-          if [ "$overall" != "cancelled" ]; then
-            fail=0; ok=0
-            [ "$R_VALIDATE" = "failure" ] && fail=1
-            for r in "$R_ANDROID" "$R_WEBGL" "$R_LINUX64" "$R_LINUXSERVER"; do
-              [ "$r" = "failure" ] && fail=1
-              [ "$r" = "success" ] && ok=1
-            done
-            if [ "$fail" = 1 ] && [ "$ok" = 1 ]; then overall=partial
-            elif [ "$fail" = 1 ]; then overall=failure
-            else overall=success; fi
-          fi
-          echo "overall=$overall" >> "$GITHUB_OUTPUT"
-          echo "Overall Discord status: $overall"
-
-      - name: Post build to Discord thread
-        uses: dyCuong03/unity-build-workflows/.github/actions/discord-upload-build@main
-        continue-on-error: true
-        env:
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        with:
-          status:              ${{ steps.status.outputs.overall }}
-          flow-type:           ${{ needs.resolve-config.outputs.flow-type }}
-          environment:         ${{ needs.resolve-config.outputs.environment }}
-          run-url:             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          commit-sha:          ${{ github.sha }}
-          branch:              ${{ github.ref_name }}
-          unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
-          result-android:      ${{ needs.build-android.result }}
-          result-webgl:        ${{ needs.build-webgl.result }}
-          result-linux64:      ${{ needs.build-linux64.result }}
-          result-linuxserver:  ${{ needs.build-linuxserver.result }}
-          result-ios:          ${{ needs.build-ios.result }}
-          result-addressables: ${{ needs.build-addressables.result }}
-          result-tests:        ${{ needs.unity-tests.result }}
-          thread-id:           ${{ vars.DISCORD_THREAD_ID }}
-          artifact-dir:        ./artifacts
-          attach-size-threshold-mb: '24'
+    with:
+      platform:            ${{ inputs.platform            || '' }}
+      environment:         ${{ inputs.environment         || '' }}
+      run-tests:           ${{ inputs.run-tests           || false }}
+      test-mode:           ${{ inputs.test-mode           || '' }}
+      build-addressables:  ${{ inputs.build-addressables  || false }}
+      activation-strategy: ${{ inputs.activation-strategy || '' }}
+      runner-mode:         ${{ inputs.runner-mode         || '' }}
+      unity-version:       ${{ inputs.unity-version       || '' }}
+      clean-build:         ${{ inputs.clean-build         || false }}
+      project-path:        '.'
+      toolkit-ref:         'main'
