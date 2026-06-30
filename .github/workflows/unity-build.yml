@@ -625,3 +625,85 @@ jobs:
             echo "::error::One or more build jobs failed. See individual job logs."
             exit 1
           fi
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB: notify-discord
+  #   Best-effort delivery of build status + files to a Discord thread.
+  #   Attaches build zips under the size threshold; links oversized ones.
+  #   No-op when DISCORD_WEBHOOK_URL is unset. NEVER fails the pipeline.
+  # ════════════════════════════════════════════════════════════════════════════
+  notify-discord:
+    name: Notify Discord
+    needs:
+      - resolve-config
+      - validate-project
+      - unity-tests
+      - build-addressables
+      - build-android
+      - build-webgl
+      - build-linux64
+      - build-linuxserver
+      - build-ios
+      - final-report
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: unity-build-*
+          path: ./artifacts
+
+      - name: Derive overall status
+        id: status
+        shell: bash
+        env:
+          R_VALIDATE:    ${{ needs.validate-project.result }}
+          R_ANDROID:     ${{ needs.build-android.result }}
+          R_WEBGL:       ${{ needs.build-webgl.result }}
+          R_LINUX64:     ${{ needs.build-linux64.result }}
+          R_LINUXSERVER: ${{ needs.build-linuxserver.result }}
+        run: |
+          set +e
+          overall=success
+          for r in "$R_VALIDATE" "$R_ANDROID" "$R_WEBGL" "$R_LINUX64" "$R_LINUXSERVER"; do
+            [ "$r" = "cancelled" ] && overall=cancelled
+          done
+          if [ "$overall" != "cancelled" ]; then
+            fail=0; ok=0
+            [ "$R_VALIDATE" = "failure" ] && fail=1
+            for r in "$R_ANDROID" "$R_WEBGL" "$R_LINUX64" "$R_LINUXSERVER"; do
+              [ "$r" = "failure" ] && fail=1
+              [ "$r" = "success" ] && ok=1
+            done
+            if [ "$fail" = 1 ] && [ "$ok" = 1 ]; then overall=partial
+            elif [ "$fail" = 1 ]; then overall=failure
+            else overall=success; fi
+          fi
+          echo "overall=$overall" >> "$GITHUB_OUTPUT"
+          echo "Overall Discord status: $overall"
+
+      - name: Post build to Discord thread
+        uses: dyCuong03/unity-build-workflows/.github/actions/discord-upload-build@main
+        continue-on-error: true
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        with:
+          status:              ${{ steps.status.outputs.overall }}
+          flow-type:           ${{ needs.resolve-config.outputs.flow-type }}
+          environment:         ${{ needs.resolve-config.outputs.environment }}
+          run-url:             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          commit-sha:          ${{ github.sha }}
+          branch:              ${{ github.ref_name }}
+          unity-version:       ${{ needs.resolve-config.outputs.unity-version }}
+          result-android:      ${{ needs.build-android.result }}
+          result-webgl:        ${{ needs.build-webgl.result }}
+          result-linux64:      ${{ needs.build-linux64.result }}
+          result-linuxserver:  ${{ needs.build-linuxserver.result }}
+          result-ios:          ${{ needs.build-ios.result }}
+          result-addressables: ${{ needs.build-addressables.result }}
+          result-tests:        ${{ needs.unity-tests.result }}
+          thread-id:           ${{ vars.DISCORD_THREAD_ID }}
+          artifact-dir:        ./artifacts
+          attach-size-threshold-mb: '24'
