@@ -14,7 +14,7 @@ on:
         required: false
         default: All
         type: choice
-        options: [All, Android, WebGL, Linux64, LinuxServer, iOS]
+        options: [All, Android, WebGL, Linux64, LinuxServer, Windows64, iOS]
 
       environment:
         description: "Build environment (passed to Unity)"
