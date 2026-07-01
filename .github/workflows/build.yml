@@ -35,10 +35,10 @@ name: Unity CI
 #   DISCORD_WEBHOOK_URL                            (notifications, optional)
 
 on:
-  push:
-    branches: [main, develop, staging, 'release-*']
-  pull_request:
-    branches: [main, develop]
+  # Legacy custom-toolkit Docker path — superseded by unity-build.yml (GameCI
+  # delegation). Manual-only: the auto push/PR triggers were removed so it no
+  # longer runs (and fails on Personal-license activation) alongside the new
+  # explicit-platform workflow. Kept for reference / Pro-license use.
   workflow_dispatch:
     inputs:
       platform:
