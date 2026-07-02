@@ -63,10 +63,11 @@ on:
         type: string
 
       clean-build:
-        description: "Force clean Library cache before building (slow)"
+        description: "Clean Build: auto=use BUILD_CLEAN variable, true=force clean, false=force incremental"
         required: false
-        default: false
-        type: boolean
+        default: auto
+        type: choice
+        options: [auto, true, false]
 
       android-export:
         description: "Android output: apk (installable) or aab (Play Store bundle)"
@@ -104,7 +105,7 @@ jobs:
       activation-strategy: ${{ inputs.activation-strategy || '' }}
       runner-mode:         ${{ inputs.runner-mode         || '' }}
       unity-version:       ${{ inputs.unity-version       || '' }}
-      clean-build:         ${{ inputs.clean-build         || false }}
+      clean-build:         ${{ inputs.clean-build         || 'auto' }}
       android-export:      ${{ inputs.android-export      || 'apk' }}
       define-symbols:      ${{ inputs.define-symbols      || '' }}
       project-path:        '.'
