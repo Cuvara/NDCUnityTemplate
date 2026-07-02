@@ -94,7 +94,7 @@ jobs:
         }}
 
       project-path:      '.'
-      unity-version:     '6000.0.26f1'
+      unity-version:     ${{ vars.UNITY_VERSION }}
 
       # Auto-derive environment from branch when not explicitly set.
       environment: >-
