@@ -50,11 +50,31 @@ on:
         options: [auto, manual-license, account, serial, preactivated, none]
 
       runner-mode:
-        description: "Execution lane"
+        description: "Execution lane (legacy — prefer runner-type/build-engine below)"
         required: false
         default: docker
         type: choice
         options: [docker, self-hosted-windows, auto]
+
+      runner-type:
+        description: "WHERE the job runs"
+        required: false
+        default: github-hosted
+        type: choice
+        options: [github-hosted, self-hosted]
+
+      build-engine:
+        description: "HOW Unity builds"
+        required: false
+        default: docker
+        type: choice
+        options: [docker, local]
+
+      runner-labels:
+        description: "Comma-separated runs-on labels (optional; blank = derived from runner-type)"
+        required: false
+        default: ''
+        type: string
 
       unity-version:
         description: "Override Unity version (blank = use ProjectSettings/ProjectVersion.txt)"
@@ -104,6 +124,9 @@ jobs:
       build-addressables:  ${{ inputs.build-addressables  || false }}
       activation-strategy: ${{ inputs.activation-strategy || '' }}
       runner-mode:         ${{ inputs.runner-mode         || '' }}
+      runner-type:         ${{ inputs.runner-type         || '' }}
+      build-engine:        ${{ inputs.build-engine        || '' }}
+      runner-labels:       ${{ inputs.runner-labels       || '' }}
       unity-version:       ${{ inputs.unity-version       || '' }}
       clean-build:         ${{ inputs.clean-build         || 'auto' }}
       android-export:      ${{ inputs.android-export      || 'apk' }}
