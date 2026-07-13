@@ -22,6 +22,11 @@ public static class PlayerBuilder
     {
         BuildTarget target = EditorUserBuildSettings.activeBuildTarget;
 
+        if (target == BuildTarget.Android)
+        {
+            ConfigureAndroidFromEnvironment();
+        }
+
         string[] scenes = EditorBuildSettings.scenes
             .Where(s => s.enabled)
             .Select(s => s.path)
@@ -72,6 +77,53 @@ public static class PlayerBuilder
         }
 
         Debug.Log($"[PlayerBuilder] Build succeeded: {summary.totalSize} bytes -> {locationPath}");
+    }
+
+    // Optional env-driven Android configuration, used by the release-signing lane
+    // to produce a .aab signed with a specific keystore without touching
+    // ProjectSettings. Every variable is optional and backward-compatible:
+    // when unset, the project's existing Build Settings / ProjectSettings
+    // values are left untouched.
+    //   ANDROID_APP_BUNDLE=1                 -> EditorUserBuildSettings.buildAppBundle = true
+    //   ANDROID_KEYSTORE=<path>               -> useCustomKeystore + keystoreName
+    //   ANDROID_KEYSTORE_PASS=<pass>           -> keystorePass
+    //   ANDROID_KEYALIAS_NAME=<alias>          -> keyaliasName
+    //   ANDROID_KEYALIAS_PASS=<pass>           -> keyaliasPass
+    private static void ConfigureAndroidFromEnvironment()
+    {
+        string appBundle = Environment.GetEnvironmentVariable("ANDROID_APP_BUNDLE");
+        if (!string.IsNullOrEmpty(appBundle) && (appBundle == "1" ||
+            appBundle.Equals("true", StringComparison.OrdinalIgnoreCase)))
+        {
+            EditorUserBuildSettings.buildAppBundle = true;
+            Debug.Log("[PlayerBuilder] ANDROID_APP_BUNDLE set -> building .aab");
+        }
+
+        string keystorePath = Environment.GetEnvironmentVariable("ANDROID_KEYSTORE");
+        if (!string.IsNullOrEmpty(keystorePath))
+        {
+            PlayerSettings.Android.useCustomKeystore = true;
+            PlayerSettings.Android.keystoreName = keystorePath;
+            Debug.Log($"[PlayerBuilder] ANDROID_KEYSTORE set -> using custom keystore {keystorePath}");
+
+            string keystorePass = Environment.GetEnvironmentVariable("ANDROID_KEYSTORE_PASS");
+            if (!string.IsNullOrEmpty(keystorePass))
+            {
+                PlayerSettings.Android.keystorePass = keystorePass;
+            }
+
+            string keyaliasName = Environment.GetEnvironmentVariable("ANDROID_KEYALIAS_NAME");
+            if (!string.IsNullOrEmpty(keyaliasName))
+            {
+                PlayerSettings.Android.keyaliasName = keyaliasName;
+            }
+
+            string keyaliasPass = Environment.GetEnvironmentVariable("ANDROID_KEYALIAS_PASS");
+            if (!string.IsNullOrEmpty(keyaliasPass))
+            {
+                PlayerSettings.Android.keyaliasPass = keyaliasPass;
+            }
+        }
     }
 
     // Per-target output location. WebGL builds into a directory; standalone/
