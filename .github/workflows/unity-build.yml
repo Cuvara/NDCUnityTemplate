@@ -109,7 +109,11 @@ on:
     branches: [develop, staging, 'release-*']
 
 concurrency:
-  group: unity-build-${{ github.ref }}-${{ github.event_name }}-${{ inputs.platform || 'auto' }}
+  # Include the lane (runner-type + build-engine) in the key so parallel builds
+  # of the same platform on different lanes (e.g. github-hosted+docker vs
+  # self-hosted+local) don't cancel each other. Push events carry no inputs, so
+  # they collapse to 'auto' and keep the original per-platform behaviour.
+  group: unity-build-${{ github.ref }}-${{ github.event_name }}-${{ inputs.platform || 'auto' }}-${{ inputs.runner-type || 'auto' }}-${{ inputs.build-engine || 'auto' }}
   cancel-in-progress: true
 
 jobs:
