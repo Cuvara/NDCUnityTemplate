@@ -137,6 +137,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Create label first (ignore error if it already exists)
+          gh label create "setup" --description "Initial project setup" --color "0E8A16" 2>/dev/null || true
+
           gh issue create \
             --title "Setup: Configure secrets & variables for ${{ steps.name.outputs.project }}" \
             --label "setup" \
