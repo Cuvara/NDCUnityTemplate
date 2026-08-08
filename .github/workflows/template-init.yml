@@ -222,6 +222,122 @@ jobs:
 
           echo "Org variable clone complete."
 
+      - name: Create GitHub Environments
+        if: steps.guard.outputs.needs_rename == 'true'
+        continue-on-error: true
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${APP_ID}" || -z "${APP_PRIVATE_KEY}" ]]; then
+            echo "::warning::APP_ID or APP_PRIVATE_KEY not set — skipping environment creation."
+            exit 0
+          fi
+
+          # Generate GitHub App installation token
+          BOT_TOKEN=$(node -e "
+          const crypto = require('crypto');
+          const https  = require('https');
+
+          const APP_ID = process.env.APP_ID;
+          const PEM    = process.env.APP_PRIVATE_KEY;
+          const ORG    = process.env.GITHUB_REPOSITORY.split('/')[0];
+
+          const now     = Math.floor(Date.now() / 1000);
+          const header  = Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT'})).toString('base64url');
+          const payload = Buffer.from(JSON.stringify({iat: now-60, exp: now+600, iss: APP_ID})).toString('base64url');
+          const signature = crypto.sign('SHA256', Buffer.from(header+'.'+payload), PEM).toString('base64url');
+          const jwt = header+'.'+payload+'.'+signature;
+
+          function api(path, token, method='GET', body=null) {
+            return new Promise((resolve, reject) => {
+              const opts = {
+                hostname: 'api.github.com', path, method,
+                headers: {
+                  'Authorization': 'Bearer '+token,
+                  'Accept': 'application/vnd.github+json',
+                  'User-Agent': 'cuvara-bot',
+                  'X-GitHub-Api-Version': '2022-11-28'
+                }
+              };
+              const req = https.request(opts, res => {
+                let d = '';
+                res.on('data', c => d += c);
+                res.on('end', () => resolve({status: res.statusCode, data: JSON.parse(d || '{}')}));
+              });
+              req.on('error', reject);
+              if (body) req.write(JSON.stringify(body));
+              req.end();
+            });
+          }
+
+          (async () => {
+            const instRes = await api('/app/installations', jwt);
+            const inst = instRes.data.find(i => i.account.login === ORG);
+            if (!inst) { console.error('App not installed on '+ORG); process.exit(1); }
+
+            const tokenRes = await api('/app/installations/'+inst.id+'/access_tokens', jwt, 'POST', {});
+            if (tokenRes.status !== 201) { console.error('Token error:', JSON.stringify(tokenRes.data)); process.exit(1); }
+            console.log(tokenRes.data.token);
+          })();
+          ")
+
+          if [[ -z "${BOT_TOKEN}" ]]; then
+            echo "::warning::Failed to generate bot token — skipping environment creation."
+            exit 0
+          fi
+
+          REPO="${{ github.repository }}"
+
+          create_environment() {
+            local ENV_NAME="$1"
+            echo "Creating environment: ${ENV_NAME}..."
+            local STATUS
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -X PUT \
+              -H "Authorization: Bearer ${BOT_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/environments/${ENV_NAME}" \
+              -d '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}')
+            if [[ "${STATUS}" =~ ^2 ]]; then
+              echo "  ✓ ${ENV_NAME} (HTTP ${STATUS})"
+            else
+              echo "  ✗ ${ENV_NAME} (HTTP ${STATUS})"
+            fi
+          }
+
+          add_branch_policy() {
+            local ENV_NAME="$1"
+            local BRANCH_PATTERN="$2"
+            local STATUS
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              -X POST \
+              -H "Authorization: Bearer ${BOT_TOKEN}" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${REPO}/environments/${ENV_NAME}/deployment-branch-policies" \
+              -d "{\"name\":\"${BRANCH_PATTERN}\",\"type\":\"branch\"}")
+            if [[ "${STATUS}" =~ ^2 ]]; then
+              echo "    ✓ branch policy: ${BRANCH_PATTERN}"
+            else
+              echo "    ✗ branch policy: ${BRANCH_PATTERN} (HTTP ${STATUS})"
+            fi
+          }
+
+          # Create environments
+          create_environment "development"
+          add_branch_policy "development" "develop"
+
+          create_environment "staging"
+          add_branch_policy "staging" "staging"
+
+          create_environment "production"
+          add_branch_policy "production" "main"
+          add_branch_policy "production" "release-*"
+
+          echo "Environment creation complete."
+
       - name: Create setup checklist issue
         if: steps.guard.outputs.needs_rename == 'true'
         env:

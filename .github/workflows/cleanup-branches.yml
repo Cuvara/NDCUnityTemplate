@@ -1,0 +1,93 @@
+name: Cleanup — Stale merged branches
+
+on:
+  schedule:
+    # Every Monday at 06:00 UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Delete stale merged branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CUTOFF_DATE=$(date -d '7 days ago' --iso-8601=seconds)
+          DELETED=()
+          SKIPPED=()
+
+          echo "Scanning for merged branches older than 7 days..."
+          echo "Cutoff: ${CUTOFF_DATE}"
+          echo ""
+
+          # List remote branches merged into main
+          MERGED_BRANCHES=$(git branch -r --merged origin/main \
+            | sed 's|origin/||' \
+            | grep -v '^\s*HEAD' \
+            | xargs -n1 echo \
+            | grep -vE '^(main|develop|staging)$' \
+            | grep -vE '^release-')
+
+          if [[ -z "${MERGED_BRANCHES}" ]]; then
+            echo "No merged branches found to clean up."
+            echo "::notice::No stale branches to delete."
+            exit 0
+          fi
+
+          REPO="${{ github.repository }}"
+
+          while IFS= read -r BRANCH; do
+            [[ -z "${BRANCH}" ]] && continue
+
+            # Get the last commit date on this branch
+            LAST_COMMIT_DATE=$(gh api \
+              "repos/${REPO}/commits?sha=${BRANCH}&per_page=1" \
+              --jq '.[0].commit.committer.date' 2>/dev/null || echo "")
+
+            if [[ -z "${LAST_COMMIT_DATE}" ]]; then
+              SKIPPED+=("${BRANCH} (could not fetch commit date)")
+              continue
+            fi
+
+            # Compare dates
+            if [[ "${LAST_COMMIT_DATE}" < "${CUTOFF_DATE}" ]]; then
+              echo "Deleting: ${BRANCH} (last commit: ${LAST_COMMIT_DATE})"
+              if gh api -X DELETE "repos/${REPO}/git/refs/heads/${BRANCH}" 2>/dev/null; then
+                DELETED+=("${BRANCH}")
+              else
+                SKIPPED+=("${BRANCH} (API delete failed)")
+              fi
+            else
+              SKIPPED+=("${BRANCH} (too recent: ${LAST_COMMIT_DATE})")
+            fi
+          done <<< "${MERGED_BRANCHES}"
+
+          echo ""
+          echo "========================================="
+          echo "Cleanup Summary"
+          echo "========================================="
+          echo "Deleted: ${#DELETED[@]} branch(es)"
+          for b in "${DELETED[@]}"; do
+            echo "  - ${b}"
+          done
+          echo "Skipped: ${#SKIPPED[@]} branch(es)"
+          for b in "${SKIPPED[@]}"; do
+            echo "  - ${b}"
+          done
+
+          if [[ ${#DELETED[@]} -gt 0 ]]; then
+            BRANCH_LIST=$(printf '%s, ' "${DELETED[@]}")
+            echo "::notice::Deleted ${#DELETED[@]} stale branch(es): ${BRANCH_LIST%, }"
+          else
+            echo "::notice::No branches were old enough to delete."
+          fi

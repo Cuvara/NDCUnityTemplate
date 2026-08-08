@@ -1,0 +1,179 @@
+name: Auto-update — unity-build-workflows submodule
+
+on:
+  repository_dispatch:
+    types: [submodule-update]
+
+  schedule:
+    # Every Monday at 08:00 UTC
+    - cron: '0 8 * * 1'
+
+  workflow_dispatch:
+
+jobs:
+  update-submodule:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Generate bot token
+        id: bot
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${APP_ID}" || -z "${APP_PRIVATE_KEY}" ]]; then
+            echo "::warning::APP_ID or APP_PRIVATE_KEY not set — falling back to GITHUB_TOKEN."
+            echo "token=${{ github.token }}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BOT_TOKEN=$(node -e "
+          const crypto = require('crypto');
+          const https  = require('https');
+
+          const APP_ID = process.env.APP_ID;
+          const PEM    = process.env.APP_PRIVATE_KEY;
+          const ORG    = process.env.GITHUB_REPOSITORY.split('/')[0];
+
+          const now     = Math.floor(Date.now() / 1000);
+          const header  = Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT'})).toString('base64url');
+          const payload = Buffer.from(JSON.stringify({iat: now-60, exp: now+600, iss: APP_ID})).toString('base64url');
+          const signature = crypto.sign('SHA256', Buffer.from(header+'.'+payload), PEM).toString('base64url');
+          const jwt = header+'.'+payload+'.'+signature;
+
+          function api(path, token, method='GET', body=null) {
+            return new Promise((resolve, reject) => {
+              const opts = {
+                hostname: 'api.github.com', path, method,
+                headers: {
+                  'Authorization': 'Bearer '+token,
+                  'Accept': 'application/vnd.github+json',
+                  'User-Agent': 'cuvara-bot',
+                  'X-GitHub-Api-Version': '2022-11-28'
+                }
+              };
+              const req = https.request(opts, res => {
+                let d = '';
+                res.on('data', c => d += c);
+                res.on('end', () => resolve({status: res.statusCode, data: JSON.parse(d || '{}')}));
+              });
+              req.on('error', reject);
+              if (body) req.write(JSON.stringify(body));
+              req.end();
+            });
+          }
+
+          (async () => {
+            const instRes = await api('/app/installations', jwt);
+            const inst = instRes.data.find(i => i.account.login === ORG);
+            if (!inst) { console.error('App not installed on '+ORG); process.exit(1); }
+
+            const tokenRes = await api('/app/installations/'+inst.id+'/access_tokens', jwt, 'POST', {});
+            if (tokenRes.status !== 201) { console.error('Token error:', JSON.stringify(tokenRes.data)); process.exit(1); }
+            console.log(tokenRes.data.token);
+          })();
+          ")
+
+          if [[ -z "${BOT_TOKEN}" ]]; then
+            echo "::warning::Failed to generate bot token — falling back to GITHUB_TOKEN."
+            echo "token=${{ github.token }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "token=${BOT_TOKEN}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.bot.outputs.token }}
+          submodules: true
+          fetch-depth: 0
+
+      - name: Update submodule to latest main
+        id: update
+        run: |
+          SUBMODULE_PATH=".github/workflows/unity-build-workflows"
+
+          if [[ ! -f ".gitmodules" ]] || ! grep -q "${SUBMODULE_PATH}" .gitmodules 2>/dev/null; then
+            # Try alternate known paths
+            SUBMODULE_PATH=$(git config --file .gitmodules --get-regexp 'submodule\..*\.path' \
+              | grep -i 'unity-build-workflows' \
+              | awk '{print $2}' \
+              | head -1)
+            if [[ -z "${SUBMODULE_PATH}" ]]; then
+              echo "::warning::unity-build-workflows submodule not found in .gitmodules"
+              exit 0
+            fi
+          fi
+
+          echo "Updating submodule at: ${SUBMODULE_PATH}"
+
+          cd "${SUBMODULE_PATH}"
+          git fetch origin main
+          git checkout origin/main
+          cd -
+
+          if git diff --quiet; then
+            echo "Submodule is already up to date."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Submodule has been updated."
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+
+            OLD_SHA=$(git diff --submodule=short "${SUBMODULE_PATH}" | grep -oP '(?<=-Subproject commit )\w+' || echo "unknown")
+            NEW_SHA=$(git diff --submodule=short "${SUBMODULE_PATH}" | grep -oP '(?<=\+Subproject commit )\w+' || echo "unknown")
+            echo "old_sha=${OLD_SHA:0:7}" >> "$GITHUB_OUTPUT"
+            echo "new_sha=${NEW_SHA:0:7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create pull request
+        if: steps.update.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+        run: |
+          BRANCH="chore/update-submodule-$(date +%Y%m%d-%H%M%S)"
+
+          git config user.name  "cuvara-bot[bot]"
+          git config user.email "4528303+cuvara-bot[bot]@users.noreply.github.com"
+
+          git checkout -b "${BRANCH}"
+          git add -A
+          git commit -m "chore: update unity-build-workflows submodule
+
+          Updated from ${{ steps.update.outputs.old_sha }} to ${{ steps.update.outputs.new_sha }}."
+
+          git push origin "${BRANCH}"
+
+          # Check if a PR already exists for a submodule update
+          EXISTING_PR=$(gh pr list \
+            --search "chore: update unity-build-workflows submodule in:title" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty' 2>/dev/null || echo "")
+
+          if [[ -n "${EXISTING_PR}" ]]; then
+            echo "::notice::Open PR #${EXISTING_PR} already exists — updating its branch."
+            # Close old PR and create new one so the branch is fresh
+            gh pr close "${EXISTING_PR}" --comment "Superseded by new submodule update." 2>/dev/null || true
+          fi
+
+          PR_URL=$(gh pr create \
+            --base develop \
+            --head "${BRANCH}" \
+            --title "chore: update unity-build-workflows submodule" \
+            --body "$(cat <<'EOF'
+          ## Summary
+          - Automatically updates the `unity-build-workflows` submodule to the latest commit on `main`
+          - Previous: ${{ steps.update.outputs.old_sha }} → New: ${{ steps.update.outputs.new_sha }}
+
+          ## Test plan
+          - [ ] Verify submodule pointer is correct
+          - [ ] Confirm CI workflows still pass with the updated submodule
+
+          > Auto-generated by the `update-submodule` workflow.
+          EOF
+          )")
+
+          echo "::notice::Pull request created: ${PR_URL}"
