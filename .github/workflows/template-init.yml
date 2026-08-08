@@ -45,7 +45,7 @@ jobs:
       - name: Check if still a template (guard)
         id: guard
         run: |
-          if grep -q '"projectName": "NDC-Unity-Template"' BuildConfig/base.json 2>/dev/null; then
+          if grep -qE '"projectName": "(NDC-Unity-Template|NDCUnityTemplate)"' BuildConfig/base.json 2>/dev/null; then
             echo "needs_rename=true" >> "$GITHUB_OUTPUT"
           else
             echo "needs_rename=false" >> "$GITHUB_OUTPUT"
@@ -73,8 +73,7 @@ jobs:
           PROJECT: ${{ steps.name.outputs.project }}
           OWNER_REPO: ${{ steps.name.outputs.owner_repo }}
         run: |
-          TEMPLATE="NDC-Unity-Template"
-          OLD_REPO="Cuvara/NDC-Unity-Template"
+          OLD_REPO="Cuvara/NDCUnityTemplate"
 
           for f in BuildConfig/base.json \
                    BuildConfig/development.json \
@@ -85,8 +84,9 @@ jobs:
             # Replace owner/repo in repository URL first (more specific)
             sed -i "s|${OLD_REPO}|${OWNER_REPO}|g" "$f"
 
-            # Replace plain template name (projectName, productName, outputName)
-            sed -i "s|${TEMPLATE}|${PROJECT}|g" "$f"
+            # Replace template name variants (projectName, productName, outputName)
+            sed -i "s|NDCUnityTemplate|${PROJECT}|g" "$f"
+            sed -i "s|NDC-Unity-Template|${PROJECT}|g" "$f"
 
             echo "  ✓ $f"
           done
@@ -108,13 +108,13 @@ jobs:
           PROJECT: ${{ steps.name.outputs.project }}
           OWNER_REPO: ${{ steps.name.outputs.owner_repo }}
         run: |
-          TEMPLATE="NDC-Unity-Template"
-          OLD_REPO="Cuvara/NDC-Unity-Template"
+          OLD_REPO="Cuvara/NDCUnityTemplate"
           FILE="README.md"
           [ -f "$FILE" ] || exit 0
 
           sed -i "s|${OLD_REPO}|${OWNER_REPO}|g" "$FILE"
-          sed -i "s|${TEMPLATE}|${PROJECT}|g" "$FILE"
+          sed -i "s|NDCUnityTemplate|${PROJECT}|g" "$FILE"
+          sed -i "s|NDC-Unity-Template|${PROJECT}|g" "$FILE"
           echo "  ✓ $FILE"
 
       - name: Commit changes
