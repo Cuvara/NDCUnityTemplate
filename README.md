@@ -54,8 +54,9 @@ gh workflow run unity-build.yml \
 ```
 
 Supported platforms: **Android**, **WebGL**, **Linux64**, **LinuxServer**.
-**iOS** requires a registered `[self-hosted, macOS, unity]` runner — it is
-**blocked** until one is provisioned (see
+**iOS** requires a registered self-hosted macOS runner with the
+`macos-unity-xcode` label — it is **blocked** until one is provisioned (see
+[SELF\_HOSTED\_MACOS\_RUNNER.md](unity-build-workflows/docs/SELF_HOSTED_MACOS_RUNNER.md),
 [EXPLICIT\_PLATFORM\_FLOW.md § iOS](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md#6-ios-build--special-requirements)
 and
 [GITHUB\_ACTIONS\_BUILD\_RUNBOOK.md § 10](unity-build-workflows/docs/GITHUB_ACTIONS_BUILD_RUNBOOK.md#10-iosmacos-runner-limitations)).
@@ -134,4 +135,5 @@ gh run download <RUN_ID> --repo dyCuong03/NDC-Unity-Template
 | [unity-build-workflows/docs/UNITY\_PERSONAL\_DOCKER\_LICENSE.md](unity-build-workflows/docs/UNITY_PERSONAL_DOCKER_LICENSE.md) | Unity Personal/free Docker licensing — `personal-combined` strategy, secret setup, troubleshooting |
 | [unity-build-workflows/docs/UNITY\_VERSION\_UPGRADE.md](unity-build-workflows/docs/UNITY_VERSION_UPGRADE.md) | Step-by-step Unity version upgrade checklist |
 | [unity-build-workflows/docs/GITHUB\_ACTIONS\_BUILD\_RUNBOOK.md](unity-build-workflows/docs/GITHUB_ACTIONS_BUILD_RUNBOOK.md) | Operational runbook — triggering builds, reading logs, artifacts, common errors |
+| [unity-build-workflows/docs/SELF\_HOSTED\_MACOS\_RUNNER.md](unity-build-workflows/docs/SELF_HOSTED_MACOS_RUNNER.md) | Provisioning a `macos-unity-xcode` self-hosted runner for iOS builds (Xcode, Unity iOS module, activation) |
 | [unity-build-workflows/README.md](unity-build-workflows/README.md) | CI toolkit — architecture, workflows, image variants |

@@ -55,7 +55,7 @@ jobs:
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           targetPlatform: ${{ inputs.targetPlatform }}
-          unityVersion: 6000.0.26f1
+          unityVersion: ${{ vars.UNITY_VERSION }}
           allowDirtyBuild: true
 
       - name: Upload build artifact

@@ -1,0 +1,132 @@
+name: Template Init — Rename project
+
+# Runs once when a new repository is created from this template.
+# Replaces all "NDC-Unity-Template" references with the actual repo name
+# and commits the result.
+
+on:
+  # Auto-trigger when repo is first created from template
+  push:
+    branches: [main]
+
+  # Manual fallback
+  workflow_dispatch:
+    inputs:
+      project-name:
+        description: >
+          Override project name (blank = use repository name).
+          Example: "My-Awesome-Game"
+        required: false
+        default: ''
+        type: string
+
+jobs:
+  rename:
+    # Only run when the repo still contains the template marker.
+    # This prevents the workflow from running on every push after init.
+    if: >-
+      contains(github.event_name, 'workflow_dispatch') ||
+      (
+        github.event_name == 'push' &&
+        github.run_number == 1
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need full history so commit is on top of everything
+          fetch-depth: 0
+
+      - name: Check if still a template (guard)
+        id: guard
+        run: |
+          if grep -q '"projectName": "NDC-Unity-Template"' BuildConfig/base.json 2>/dev/null; then
+            echo "needs_rename=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_rename=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Project already renamed — skipping."
+          fi
+
+      - name: Determine project name
+        if: steps.guard.outputs.needs_rename == 'true'
+        id: name
+        run: |
+          # Use manual input if provided, otherwise derive from repo name
+          INPUT_NAME="${{ inputs.project-name }}"
+          if [[ -n "$INPUT_NAME" ]]; then
+            PROJECT_NAME="$INPUT_NAME"
+          else
+            PROJECT_NAME="${{ github.event.repository.name }}"
+          fi
+          echo "project=$PROJECT_NAME" >> "$GITHUB_OUTPUT"
+          echo "owner_repo=${{ github.repository }}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Renaming NDC-Unity-Template → $PROJECT_NAME"
+
+      - name: Rename in BuildConfig JSON files
+        if: steps.guard.outputs.needs_rename == 'true'
+        env:
+          PROJECT: ${{ steps.name.outputs.project }}
+          OWNER_REPO: ${{ steps.name.outputs.owner_repo }}
+        run: |
+          TEMPLATE="NDC-Unity-Template"
+          OLD_REPO="dyCuong03/NDC-Unity-Template"
+
+          for f in BuildConfig/base.json \
+                   BuildConfig/development.json \
+                   BuildConfig/staging.json \
+                   BuildConfig/production.json; do
+            [ -f "$f" ] || continue
+
+            # Replace owner/repo in repository URL first (more specific)
+            sed -i "s|${OLD_REPO}|${OWNER_REPO}|g" "$f"
+
+            # Replace plain template name (projectName, productName, outputName)
+            sed -i "s|${TEMPLATE}|${PROJECT}|g" "$f"
+
+            echo "  ✓ $f"
+          done
+
+      - name: Rename in ProjectSettings
+        if: steps.guard.outputs.needs_rename == 'true'
+        env:
+          PROJECT: ${{ steps.name.outputs.project }}
+        run: |
+          TEMPLATE="NDC-Unity-Template"
+          FILE="ProjectSettings/ProjectSettings.asset"
+          [ -f "$FILE" ] || exit 0
+          sed -i "s|${TEMPLATE}|${PROJECT}|g" "$FILE"
+          echo "  ✓ $FILE"
+
+      - name: Rename in README
+        if: steps.guard.outputs.needs_rename == 'true'
+        env:
+          PROJECT: ${{ steps.name.outputs.project }}
+          OWNER_REPO: ${{ steps.name.outputs.owner_repo }}
+        run: |
+          TEMPLATE="NDC-Unity-Template"
+          OLD_REPO="dyCuong03/NDC-Unity-Template"
+          FILE="README.md"
+          [ -f "$FILE" ] || exit 0
+
+          sed -i "s|${OLD_REPO}|${OWNER_REPO}|g" "$FILE"
+          sed -i "s|${TEMPLATE}|${PROJECT}|g" "$FILE"
+          echo "  ✓ $FILE"
+
+      - name: Commit changes
+        if: steps.guard.outputs.needs_rename == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "::notice::No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "chore: rename project from template → ${{ steps.name.outputs.project }}"
+          git push
