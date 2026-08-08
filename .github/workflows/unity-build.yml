@@ -118,7 +118,7 @@ concurrency:
 
 jobs:
   pipeline:
-    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
     secrets: inherit
     with:
       platform:            ${{ inputs.platform            || '' }}
