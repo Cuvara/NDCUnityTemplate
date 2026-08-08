@@ -74,7 +74,7 @@ jobs:
           OWNER_REPO: ${{ steps.name.outputs.owner_repo }}
         run: |
           TEMPLATE="NDC-Unity-Template"
-          OLD_REPO="dyCuong03/NDC-Unity-Template"
+          OLD_REPO="Cuvara/NDC-Unity-Template"
 
           for f in BuildConfig/base.json \
                    BuildConfig/development.json \
@@ -109,7 +109,7 @@ jobs:
           OWNER_REPO: ${{ steps.name.outputs.owner_repo }}
         run: |
           TEMPLATE="NDC-Unity-Template"
-          OLD_REPO="dyCuong03/NDC-Unity-Template"
+          OLD_REPO="Cuvara/NDC-Unity-Template"
           FILE="README.md"
           [ -f "$FILE" ] || exit 0
 

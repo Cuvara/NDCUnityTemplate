@@ -5,7 +5,7 @@ on:
 
 jobs:
   generate:
-    uses: dyCuong03/unity-build-workflows/.github/workflows/unity-generate-license.yml@main
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-generate-license.yml@main
     with:
       unity-version: ${{ vars.UNITY_VERSION }}
     secrets:
