@@ -33,6 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
 
     steps:
       - name: Checkout
@@ -130,3 +131,107 @@ jobs:
 
           git commit -m "chore: rename project from template → ${{ steps.name.outputs.project }}"
           git push
+
+      - name: Create setup checklist issue
+        if: steps.guard.outputs.needs_rename == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create \
+            --title "Setup: Configure secrets & variables for ${{ steps.name.outputs.project }}" \
+            --label "setup" \
+            --body "$(cat <<'ISSUE_BODY'
+          ## Project initialized from NDC-Unity-Template
+
+          The project has been renamed automatically. You now need to configure
+          the **secrets** and **variables** required by the CI/CD pipelines.
+
+          > **Why can't these be copied automatically?**
+          > GitHub does not allow reading secret values via API — this is a security
+          > feature. Variables *could* be copied, but they often need project-specific
+          > values (e.g. `UNITY_VERSION`), so a manual checklist is safer.
+
+          ---
+
+          ### Repository Variables
+
+          Go to **Settings → Secrets and variables → Actions → Variables** and create:
+
+          | Variable | Example | Description |
+          |----------|---------|-------------|
+          | `UNITY_VERSION` | `2022.3.20f1` | Unity editor version for all CI jobs |
+
+          ---
+
+          ### Repository Secrets (required)
+
+          Go to **Settings → Secrets and variables → Actions → Secrets** and create:
+
+          #### Unity License
+          - [ ] `UNITY_LICENSE` — Contents of your `.ulf` license file
+          - [ ] `UNITY_EMAIL` — Unity account email
+          - [ ] `UNITY_PASSWORD` — Unity account password
+          - [ ] `UNITY_SERIAL` — *(Pro/Plus only)* Serial key
+
+          #### Android Signing
+          - [ ] `ANDROID_KEYSTORE_BASE64` — Base64-encoded `.keystore` file
+          - [ ] `ANDROID_KEYSTORE_PASS` — Keystore password
+          - [ ] `ANDROID_KEY_ALIAS` — Key alias name
+          - [ ] `ANDROID_KEY_PASS` — Key password
+
+          #### iOS Distribution *(optional — skip if not building iOS)*
+          - [ ] `IOS_DISTRIBUTION_CERTIFICATE_BASE64`
+          - [ ] `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`
+          - [ ] `IOS_PROVISIONING_PROFILE_BASE64`
+          - [ ] `APP_STORE_CONNECT_KEY_ID`
+          - [ ] `APP_STORE_CONNECT_ISSUER_ID`
+          - [ ] `APP_STORE_CONNECT_PRIVATE_KEY`
+
+          #### WebGL / Cloudflare Pages *(optional)*
+          - [ ] `CLOUDFLARE_API_TOKEN`
+          - [ ] `CLOUDFLARE_ACCOUNT_ID`
+
+          #### Google Play *(optional)*
+          - [ ] `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON`
+
+          #### Discord Notifications *(optional)*
+          - [ ] `DISCORD_WEBHOOK_URL`
+
+          ---
+
+          ### Quick setup with `gh` CLI
+
+          If you have the secrets on hand, you can set them in bulk:
+
+          ```bash
+          # Variables
+          gh variable set UNITY_VERSION --body "2022.3.20f1"
+
+          # Required secrets
+          gh secret set UNITY_LICENSE < Unity_lic.ulf
+          gh secret set UNITY_EMAIL
+          gh secret set UNITY_PASSWORD
+
+          # Android signing
+          base64 -w0 release.keystore | gh secret set ANDROID_KEYSTORE_BASE64
+          gh secret set ANDROID_KEYSTORE_PASS
+          gh secret set ANDROID_KEY_ALIAS
+          gh secret set ANDROID_KEY_PASS
+          ```
+
+          ---
+
+          ### Organization-level secrets (recommended)
+
+          If multiple repos share the same Unity license or Android keystore,
+          consider setting these as **organization secrets** instead:
+
+          **Settings → Organization → Secrets and variables → Actions**
+
+          This way, every repo created from the template inherits them automatically.
+
+          ---
+
+          Close this issue once all required secrets are configured and a test build passes.
+          ISSUE_BODY
+          )"
