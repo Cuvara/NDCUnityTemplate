@@ -132,6 +132,106 @@ jobs:
           git commit -m "chore: rename project from template → ${{ steps.name.outputs.project }}"
           git push
 
+      - name: Add repo to org secrets & variables selected list
+        if: steps.guard.outputs.needs_rename == 'true'
+        env:
+          APP_ID: ${{ secrets.APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${APP_ID}" || -z "${APP_PRIVATE_KEY}" ]]; then
+            echo "::warning::APP_ID or APP_PRIVATE_KEY not set — skipping org access grant."
+            exit 0
+          fi
+
+          # Generate GitHub App installation token using Node.js (no dependencies)
+          BOT_TOKEN=$(node -e "
+          const crypto = require('crypto');
+          const https  = require('https');
+
+          const APP_ID = process.env.APP_ID;
+          const PEM    = process.env.APP_PRIVATE_KEY;
+          const ORG    = process.env.GITHUB_REPOSITORY.split('/')[0];
+
+          const now     = Math.floor(Date.now() / 1000);
+          const header  = Buffer.from(JSON.stringify({alg:'RS256',typ:'JWT'})).toString('base64url');
+          const payload = Buffer.from(JSON.stringify({iat: now-60, exp: now+600, iss: APP_ID})).toString('base64url');
+          const signature = crypto.sign('SHA256', Buffer.from(header+'.'+payload), PEM).toString('base64url');
+          const jwt = header+'.'+payload+'.'+signature;
+
+          function api(path, token, method='GET', body=null) {
+            return new Promise((resolve, reject) => {
+              const opts = {
+                hostname: 'api.github.com', path, method,
+                headers: {
+                  'Authorization': 'Bearer '+token,
+                  'Accept': 'application/vnd.github+json',
+                  'User-Agent': 'cuvara-bot',
+                  'X-GitHub-Api-Version': '2022-11-28'
+                }
+              };
+              const req = https.request(opts, res => {
+                let d = '';
+                res.on('data', c => d += c);
+                res.on('end', () => resolve({status: res.statusCode, data: JSON.parse(d || '{}')}));
+              });
+              req.on('error', reject);
+              if (body) req.write(JSON.stringify(body));
+              req.end();
+            });
+          }
+
+          (async () => {
+            const instRes = await api('/app/installations', jwt);
+            const inst = instRes.data.find(i => i.account.login === ORG);
+            if (!inst) { console.error('App not installed on '+ORG); process.exit(1); }
+
+            const tokenRes = await api('/app/installations/'+inst.id+'/access_tokens', jwt, 'POST', {});
+            if (tokenRes.status !== 201) { console.error('Token error:', JSON.stringify(tokenRes.data)); process.exit(1); }
+            console.log(tokenRes.data.token);
+          })();
+          ")
+
+          if [[ -z "${BOT_TOKEN}" ]]; then
+            echo "::warning::Failed to generate bot token — skipping org access grant."
+            exit 0
+          fi
+
+          export GH_TOKEN="${BOT_TOKEN}"
+          REPO="${{ github.repository }}"
+          ORG="Cuvara"
+          REPO_ID=$(gh api "/repos/${REPO}" --jq '.id')
+
+          if [[ -z "${REPO_ID}" ]]; then
+            echo "::warning::Could not get repo ID for ${REPO} — skipping."
+            exit 0
+          fi
+
+          echo "Repo ID: ${REPO_ID}"
+
+          # Add repo to each org secret's selected list
+          echo "Adding ${REPO} to org secrets..."
+          SECRETS=$(gh secret list --org "${ORG}" --json name,visibility -q '.[] | select(.visibility=="selected") | .name' 2>/dev/null || echo "")
+          for secret in ${SECRETS}; do
+            if gh api --method PUT "/orgs/${ORG}/actions/secrets/${secret}/repositories/${REPO_ID}" 2>/dev/null; then
+              echo "  ✓ secret: ${secret}"
+            else
+              echo "  ✗ secret: ${secret} (failed)"
+            fi
+          done
+
+          # Add repo to each org variable's selected list
+          echo "Adding ${REPO} to org variables..."
+          VARIABLES=$(gh variable list --org "${ORG}" --json name,visibility -q '.[] | select(.visibility=="selected") | .name' 2>/dev/null || echo "")
+          for var in ${VARIABLES}; do
+            if gh api --method PUT "/orgs/${ORG}/actions/variables/${var}/repositories/${REPO_ID}" 2>/dev/null; then
+              echo "  ✓ variable: ${var}"
+            else
+              echo "  ✗ variable: ${var} (failed)"
+            fi
+          done
+
+          echo "Org access grant complete."
+
       - name: Clone org variables to new repo
         if: steps.guard.outputs.needs_rename == 'true'
         env:
@@ -143,7 +243,7 @@ jobs:
             exit 0
           fi
 
-          # Generate GitHub App installation token using Node.js (no dependencies)
+          # Reuse bot token generation
           BOT_TOKEN=$(node -e "
           const crypto = require('crypto');
           const https  = require('https');
