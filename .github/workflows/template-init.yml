@@ -132,14 +132,14 @@ jobs:
           git commit -m "chore: rename project from template → ${{ steps.name.outputs.project }}"
           git push
 
-      - name: Clone org variables to new repo
+      - name: Add repo to org secrets & variables selected list
         if: steps.guard.outputs.needs_rename == 'true'
         env:
           APP_ID: ${{ secrets.APP_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
         run: |
           if [[ -z "${APP_ID}" || -z "${APP_PRIVATE_KEY}" ]]; then
-            echo "::warning::APP_ID or APP_PRIVATE_KEY not set — skipping org variable clone."
+            echo "::warning::APP_ID or APP_PRIVATE_KEY not set — skipping org access grant."
             exit 0
           fi
 
@@ -192,35 +192,45 @@ jobs:
           ")
 
           if [[ -z "${BOT_TOKEN}" ]]; then
-            echo "::warning::Failed to generate bot token — skipping org variable clone."
+            echo "::warning::Failed to generate bot token — skipping org access grant."
             exit 0
           fi
 
           export GH_TOKEN="${BOT_TOKEN}"
           REPO="${{ github.repository }}"
           ORG="Cuvara"
+          REPO_ID=$(gh api "/repos/${REPO}" --jq '.id')
 
-          echo "Listing org-level variables from ${ORG}..."
-          VARS_JSON=$(gh variable list --org "${ORG}" --json name,value 2>/dev/null || echo "[]")
-
-          COUNT=$(echo "${VARS_JSON}" | jq length)
-          if [[ "${COUNT}" -eq 0 ]]; then
-            echo "No org variables found — nothing to clone."
+          if [[ -z "${REPO_ID}" ]]; then
+            echo "::warning::Could not get repo ID for ${REPO} — skipping."
             exit 0
           fi
 
-          echo "Cloning ${COUNT} org variable(s) to ${REPO}..."
-          echo "${VARS_JSON}" | jq -c '.[]' | while read -r entry; do
-            VAR_NAME=$(echo "${entry}" | jq -r '.name')
-            VAR_VALUE=$(echo "${entry}" | jq -r '.value')
-            if gh variable set "${VAR_NAME}" --repo "${REPO}" --body "${VAR_VALUE}"; then
-              echo "  ✓ ${VAR_NAME}"
+          echo "Repo ID: ${REPO_ID}"
+
+          # Add repo to each org secret's selected list
+          echo "Adding ${REPO} to org secrets..."
+          SECRETS=$(gh secret list --org "${ORG}" --json name,visibility -q '.[] | select(.visibility=="selected") | .name' 2>/dev/null || echo "")
+          for secret in ${SECRETS}; do
+            if gh api --method PUT "/orgs/${ORG}/actions/secrets/${secret}/repositories/${REPO_ID}" 2>/dev/null; then
+              echo "  ✓ secret: ${secret}"
             else
-              echo "  ✗ ${VAR_NAME} (failed)"
+              echo "  ✗ secret: ${secret} (failed)"
             fi
           done
 
-          echo "Org variable clone complete."
+          # Add repo to each org variable's selected list
+          echo "Adding ${REPO} to org variables..."
+          VARIABLES=$(gh variable list --org "${ORG}" --json name,visibility -q '.[] | select(.visibility=="selected") | .name' 2>/dev/null || echo "")
+          for var in ${VARIABLES}; do
+            if gh api --method PUT "/orgs/${ORG}/actions/variables/${var}/repositories/${REPO_ID}" 2>/dev/null; then
+              echo "  ✓ variable: ${var}"
+            else
+              echo "  ✗ variable: ${var} (failed)"
+            fi
+          done
+
+          echo "Org access grant complete."
 
       - name: Create GitHub Environments
         if: steps.guard.outputs.needs_rename == 'true'
