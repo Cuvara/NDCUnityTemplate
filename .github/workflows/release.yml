@@ -1,0 +1,154 @@
+name: Release
+
+# Per-platform release pipeline with phased store deployment.
+# Delegates to toolkit's pipeline-android-release and pipeline-ios-release workflows.
+# Each platform is a separate pipeline node with its own build → validate → store flow.
+#
+# Architecture: see unity-build-workflows/docs/PHASED_RELEASE_PIPELINE.md
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform(s) to release"
+        required: true
+        type: choice
+        options: [Android, iOS, Both]
+
+      bump-type:
+        description: "Version bump type (none = use current version)"
+        required: false
+        type: choice
+        default: none
+        options: [none, patch, minor, major]
+
+      rollout-percentage:
+        description: "Android production rollout percentage (1-100)"
+        required: false
+        type: number
+        default: 10
+
+      phased-release-ios:
+        description: "Enable iOS 7-day phased release"
+        required: false
+        type: boolean
+        default: true
+
+      skip-external-testing:
+        description: "Skip external testing phase (internal → production)"
+        required: false
+        type: boolean
+        default: false
+
+      dry-run:
+        description: "Build only — no store deployment"
+        required: false
+        type: boolean
+        default: false
+
+      unity-version:
+        description: "Override Unity version (blank = ProjectVersion.txt)"
+        required: false
+        type: string
+        default: ''
+
+      android-export:
+        description: "Android output format"
+        required: false
+        type: choice
+        default: aab
+        options: [aab, apk]
+
+concurrency:
+  group: release-${{ github.ref }}-${{ inputs.platform }}
+  cancel-in-progress: false
+
+jobs:
+  # ─── PREFLIGHT ──────────────────────────────────────────────────────────────
+  preflight:
+    name: Preflight
+    runs-on: ubuntu-latest
+    outputs:
+      build-android: ${{ steps.resolve.outputs.build-android }}
+      build-ios: ${{ steps.resolve.outputs.build-ios }}
+      version: ${{ steps.resolve.outputs.version }}
+      unity-version: ${{ steps.resolve.outputs.unity-version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve
+        id: resolve
+        shell: bash
+        run: |
+          PLATFORM="${{ inputs.platform }}"
+          echo "build-android=$([[ "${PLATFORM}" == "Android" || "${PLATFORM}" == "Both" ]] && echo true || echo false)" >> "${GITHUB_OUTPUT}"
+          echo "build-ios=$([[ "${PLATFORM}" == "iOS" || "${PLATFORM}" == "Both" ]] && echo true || echo false)" >> "${GITHUB_OUTPUT}"
+
+          VERSION=$(grep -oP '^\s*bundleVersion:\s*\K[0-9]+\.[0-9]+\.[0-9]+' ProjectSettings/ProjectSettings.asset || echo "0.0.0")
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+          UNITY_VER="${{ inputs.unity-version }}"
+          if [[ -z "${UNITY_VER}" ]]; then
+            UNITY_VER=$(grep -oP 'm_EditorVersion:\s*\K\S+' ProjectSettings/ProjectVersion.txt || echo "")
+          fi
+          echo "unity-version=${UNITY_VER}" >> "${GITHUB_OUTPUT}"
+          echo "Platform: ${PLATFORM} | Version: ${VERSION} | Unity: ${UNITY_VER}"
+
+  # ─── ANDROID RELEASE PIPELINE ──────────────────────────────────────────────
+  android-release:
+    name: Android Release
+    needs: [preflight]
+    if: needs.preflight.outputs.build-android == 'true'
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-android-release.yml@main
+    with:
+      unity-version: ${{ needs.preflight.outputs.unity-version }}
+      build-version: ${{ needs.preflight.outputs.version }}
+      package-name: ${{ vars.ANDROID_PACKAGE_NAME || '' }}
+      rollout-percentage: ${{ inputs.rollout-percentage }}
+      skip-external: ${{ inputs.skip-external-testing }}
+      dry-run: ${{ inputs.dry-run }}
+      project-path: '.'
+      build-addressables: true
+      integration-mode: submodule
+      toolkit-path: unity-build-workflows
+    secrets: inherit
+
+  # ─── iOS RELEASE PIPELINE ──────────────────────────────────────────────────
+  ios-release:
+    name: iOS Release
+    needs: [preflight]
+    if: needs.preflight.outputs.build-ios == 'true'
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-ios-release.yml@main
+    with:
+      unity-version: ${{ needs.preflight.outputs.unity-version }}
+      build-version: ${{ needs.preflight.outputs.version }}
+      version-string: ${{ needs.preflight.outputs.version }}
+      app-id: ${{ vars.IOS_APP_STORE_ID || '' }}
+      phased-release: ${{ inputs.phased-release-ios }}
+      dry-run: ${{ inputs.dry-run }}
+      project-path: '.'
+      build-addressables: true
+      integration-mode: submodule
+      toolkit-path: unity-build-workflows
+    secrets: inherit
+
+  # ─── REPORT ─────────────────────────────────────────────────────────────────
+  report:
+    name: Release Report
+    needs: [preflight, android-release, ios-release]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        shell: bash
+        run: |
+          echo "## Release Report" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Platform | Status |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "|----------|--------|" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| Android | ${{ needs.android-release.result || 'skipped' }} |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "| iOS | ${{ needs.ios-release.result || 'skipped' }} |" >> "${GITHUB_STEP_SUMMARY}"
+          echo "" >> "${GITHUB_STEP_SUMMARY}"
+          echo "**Version:** ${{ needs.preflight.outputs.version }}" >> "${GITHUB_STEP_SUMMARY}"
+          echo "**Dry Run:** ${{ inputs.dry-run }}" >> "${GITHUB_STEP_SUMMARY}"
