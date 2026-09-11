@@ -24,11 +24,6 @@ name: Release / iOS
 on:
   workflow_dispatch:
     inputs:
-      unity-version:
-        description: "GENERAL · Unity version (blank = ProjectVersion.txt)"
-        required: false
-        default: ''
-        type: string
 
       build-version:
         description: "GENERAL · Version being released, e.g. 1.4.2"
@@ -68,11 +63,6 @@ on:
         required: true
         type: string
 
-      bundle-id:
-        description: "IOS · Expected CFBundleIdentifier, checked before upload"
-        required: false
-        default: ''
-        type: string
 
       phased-release:
         description: "IOS · Enable the 7-day phased release for production"
@@ -90,11 +80,9 @@ jobs:
     uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-ios-release.yml@main
     secrets: inherit
     with:
-      unity-version: ${{ inputs.unity-version }}
       build-version: ${{ inputs.build-version }}
       version-string: ${{ inputs.build-version }}
       app-id: ${{ inputs.app-id }}
-      bundle-id: ${{ inputs.bundle-id }}
       artifact-name: ${{ inputs.artifact-name }}
       source-run-id: ${{ inputs.source-run-id }}
       start-phase: ${{ inputs.start-phase }}
