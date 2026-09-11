@@ -76,7 +76,7 @@ concurrency:
 
 jobs:
   release:
-    name: Android
+    name: Release
     uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-android-release.yml@main
     secrets: inherit
     with:
