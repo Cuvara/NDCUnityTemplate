@@ -1,46 +1,56 @@
 # ────────────────────────────────────────────────────────────────────────────
-# build-webgl.yml — Build WebGL
+# 10-build-development.yml — Build / Development
 #
-# Why this exists as its own workflow: GitHub's workflow_dispatch form has no
-# conditional visibility, so a single multi-platform form has to show Android's
-# APK/AAB choice to somebody releasing iOS. Splitting the ENTRY POINT — not the
-# implementation — is the only way to get a form that shows just the options
-# that apply. Every one of these workflows calls the same
-# unity-pipeline.yml engine; none of them contains build logic.
+# Three workflows, three questions:
 #
-# Automatic push/PR builds are NOT here — they stay in unity-build.yml, which
-# resolves platforms per branch from the *_BUILD_PLATFORMS repository variables.
+#   01-ci.yml                 Is this code safe to merge?
+#   10-build-development.yml  Give me something to test with.
+#   11-build-release.yml      Give me something we could ship.
 #
-# WebGL-only entry point. Produces the WebGL player and validates it
-# (index.html, the four player files, compression consistency, size).
+# They are separate because the answers cost different amounts and carry
+# different risk. CI must be cheap enough to run on every push; a release build
+# is signed, store-shaped and must never be mistaken for a dev build.
 #
-# There is deliberately no compression input: on this lane compression is
-# whatever the Unity project's WebGL settings emit. The toolkit's
-# compress_webgl.sh runs only in unity-build-webgl.yml, the deployment lane used
-# by pipeline-webgl-release.yml. Exposing a knob here that the engine does not
-# read would be a lie in the form.
+# All three call the same unity-pipeline.yml engine. None contains build logic.
+#
+# Artifacts for development, QA and internal testing. Android ships an APK here,
+# never an AAB — that distinction is in the artifact name, so a dev build can
+# never be mistaken for a release candidate:
+#
+#   development-android-apk    development-webgl
+#   development-ios-xcodeproj  development-windows
+#                              development-linux
+#
+# This workflow does NOT publish anywhere.
 # ────────────────────────────────────────────────────────────────────────────
 
-name: Build WebGL
+name: Build / Development
 
 on:
   workflow_dispatch:
     inputs:
+      platform:
+        description: "GENERAL · Platform to build ('All' uses the environment's *_BUILD_PLATFORMS variable)"
+        required: false
+        default: 'All'
+        type: choice
+        options: ['All', 'Android', 'iOS', 'WebGL', 'Windows64', 'Linux64', 'LinuxServer']
+
       environment:
         description: "GENERAL · Build environment"
         required: false
-        default: 'production'
+        default: 'development'
         type: choice
-        options: ['development', 'staging', 'production']
+        options: ['development', 'staging']
 
       run-tests:
-        description: "QUALITY · Run Unity tests before building (the quality gate)"
+        description: "QUALITY · Run Unity tests as the quality gate before building"
         required: false
         default: true
         type: boolean
 
       test-mode:
-        description: "QUALITY · Test suite to run (ignored when run-tests is off)"
+        description: "QUALITY · Test suite (ignored when run-tests is off)"
         required: false
         default: 'All'
         type: choice
@@ -59,7 +69,7 @@ on:
         type: string
 
       clean-build:
-        description: "UNITY · Clean build (blank = auto: clean for release, incremental otherwise)"
+        description: "UNITY · Clean build (auto = clean for release, incremental otherwise)"
         required: false
         default: 'auto'
         type: choice
@@ -85,35 +95,34 @@ on:
         type: choice
         options: ['auto', 'docker', 'local']
 
-      activation-strategy:
-        description: "ADVANCED · Unity licence activation strategy (docker lane only)"
+      runner-labels:
+        description: "ADVANCED · Runner labels as a JSON array (blank = RUNNER_LABELS variable)"
         required: false
-        default: 'auto'
-        type: choice
-        options: ['auto', 'manual-license', 'account', 'serial', 'preactivated', 'none']
+        default: ''
+        type: string
 
 concurrency:
-  group: build-webgl-${{ github.ref }}-${{ inputs.environment }}
+  group: build-development-${{ github.ref }}-${{ inputs.platform }}-${{ inputs.environment }}
   cancel-in-progress: true
 
 jobs:
-  # The node name prefixes every node of the called pipeline in the Actions
-  # graph, so it is kept short and platform-shaped.
   build:
-    name: WebGL
+    name: Development
     uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
     secrets: inherit
     with:
-      platform: WebGL
+      project-path: '.'
+      toolkit-ref: 'main'
+      build-type: development
+      platform: ${{ inputs.platform }}
       environment: ${{ inputs.environment }}
+      android-export: apk
+      build-addressables: ${{ inputs.build-addressables }}
       run-tests: ${{ inputs.run-tests }}
       test-mode: ${{ inputs.test-mode }}
-      build-addressables: ${{ inputs.build-addressables }}
       unity-version: ${{ inputs.unity-version }}
       clean-build: ${{ inputs.clean-build }}
       define-symbols: ${{ inputs.define-symbols }}
       runner-type: ${{ inputs.runner-type != 'auto' && inputs.runner-type || '' }}
       build-engine: ${{ inputs.build-engine != 'auto' && inputs.build-engine || '' }}
-      activation-strategy: ${{ inputs.activation-strategy }}
-      project-path: '.'
-      toolkit-ref: 'main'
+      runner-labels: ${{ inputs.runner-labels }}
