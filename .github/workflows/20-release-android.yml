@@ -1,0 +1,90 @@
+# ────────────────────────────────────────────────────────────────────────────
+# 20-release-android.yml — Release / Android
+#
+# Release is not another build. The artifact this promotes was produced by
+# Build / Release and is IMMUTABLE: nothing here re-runs Unity, so the binary
+# QA approved is the binary that ships.
+#
+#   Build / Release  ->  release-android-aab  ->  [this workflow]  ->  store / host
+#
+# Each platform has its own workflow because the release lifecycles are not the
+# same shape. Forcing them into one matrix would mean a job full of
+# `if platform == ...`, which is what makes a release pipeline unreadable at the
+# moment you most need to read it.
+#
+# Google Play lifecycle: internal testing -> closed (alpha) testing -> staged
+# production rollout. Each phase is gated by its own GitHub Environment, so
+# approvals and reviewers are configured in repository settings rather than
+# invented in YAML.
+# ────────────────────────────────────────────────────────────────────────────
+
+name: Release / Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      unity-version:
+        description: "GENERAL · Unity version (blank = ProjectVersion.txt)"
+        required: false
+        default: ''
+        type: string
+
+      build-version:
+        description: "GENERAL · Version being released, e.g. 1.4.2"
+        required: true
+        type: string
+
+      artifact-name:
+        description: "ARTIFACT · Artifact from a Build / Release run to promote"
+        required: false
+        default: 'release-android-aab'
+        type: string
+
+      start-phase:
+        description: "PHASE · Where to start. Use a later phase to retry without rebuilding"
+        required: false
+        default: 'internal'
+        type: choice
+        options: ['build', 'internal', 'external', 'production']
+
+      dry-run:
+        description: "SAFETY · Validate only — do not publish anything"
+        required: false
+        default: false
+        type: boolean
+
+      package-name:
+        description: "ANDROID · Play package name, e.g. com.company.game"
+        required: true
+        type: string
+
+      rollout-percentage:
+        description: "ANDROID · Staged production rollout percentage"
+        required: false
+        default: '10'
+        type: string
+
+      skip-external:
+        description: "ANDROID · Skip closed testing (internal -> production)"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-android-aab-${{ inputs.build-version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Android
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-android-release.yml@main
+    secrets: inherit
+    with:
+      unity-version: ${{ inputs.unity-version }}
+      build-version: ${{ inputs.build-version }}
+      package-name: ${{ inputs.package-name }}
+      artifact-name: ${{ inputs.artifact-name }}
+      start-phase: ${{ inputs.start-phase }}
+      rollout-percentage: ${{ fromJSON(inputs.rollout-percentage) }}
+      skip-external: ${{ inputs.skip-external }}
+      dry-run: ${{ inputs.dry-run }}

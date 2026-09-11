@@ -12,79 +12,100 @@ This project uses the
 git submodule) for all CI builds. Unity operations run inside pinned Docker
 containers on GitHub Actions — no local Unity installation is required for CI.
 
-Builds are split into an **automatic** lane and **per-platform manual** entry
-workflows. All of them call the same `unity-pipeline.yml` engine in the toolkit
-— the split is user experience, not duplicated build logic.
+The pipeline has three layers, and each workflow answers one question.
 
-| Workflow | Trigger | Use it for |
+| Workflow | Trigger | Question it answers |
 |---|---|---|
-| **Unity Build** (`unity-build.yml`) | push / PR to `develop`, `staging`, `release-*` | Automatic CI. No form: platforms, environment, tests and Addressables all resolve per branch from the repository variables. |
-| **Build Android** (`build-android.yml`) | manual | Android. The only workflow with the APK/AAB choice. |
-| **Build iOS** (`build-ios.yml`) | manual | iOS. Exposes the macOS runner labels. |
-| **Build WebGL** (`build-webgl.yml`) | manual | WebGL. |
-| **Build All** (`build-all.yml`) | manual | Every platform in the environment's `*_BUILD_PLATFORMS` variable. |
+| **CI / Validate & Test** (`01-ci.yml`) | push / PR | *Is this code safe to merge?* Validates, tests, reports. **Builds no player.** |
+| **Build / Development** (`10-build-development.yml`) | manual | *Give me something to test with.* Android ships an **APK**. |
+| **Build / Release** (`11-build-release.yml`) | manual | *Give me something we could ship.* Android ships a signed **AAB**. |
+| **Release / Android** (`20-release-android.yml`) | manual | Promote a `release-android-aab` to Google Play. |
+| **Release / iOS** (`21-release-ios.yml`) | manual | Promote a release IPA to App Store Connect. |
+| **Release / WebGL** (`22-release-webgl.yml`) | manual | Promote a `release-webgl` to hosting. |
 
-Why separate files: GitHub's `workflow_dispatch` form has no conditional input
-visibility, so one multi-platform form has to show Android's APK/AAB choice to
-somebody building iOS. Splitting the entry point is the only way to get a form
-that contains just the options that apply. See
-[PIPELINE\_ARCHITECTURE.md § 1a](unity-build-workflows/docs/PIPELINE_ARCHITECTURE.md).
+All of them call the same `unity-pipeline.yml` engine in the toolkit — the
+split is user experience, not duplicated build logic.
+
+### Build / Development vs Build / Release
+
+Release is **not** Development with `environment=production`. It is signed,
+store-shaped, and its artifacts are the immutable inputs to the Release
+workflows. The artifact names keep the two apart, so a dev build can never be
+mistaken for a release candidate:
+
+| Platform | Development | Release |
+|---|---|---|
+| Android | `development-android-apk` | `release-android-aab` |
+| iOS | `development-ios-xcodeproj` | `release-ios-xcodeproj` |
+| WebGL | `development-webgl` | `release-webgl` |
+| Windows | `development-windows` | `release-windows` |
+| Linux | `development-linux` | `release-linux` |
+| Linux (server) | `development-linux-server` | `release-linux-server` |
+
+### Artifact promotion
+
+Nothing is rebuilt between QA and production — the binary QA approved is the
+binary that ships:
+
+```
+Build / Release  →  release-android-aab  →  Release / Android
+                                             ├── internal testing
+                                             ├── closed testing
+                                             └── production   (approval)
+```
+
+Each Release workflow defaults to `start-phase` *after* the build, so it
+promotes the stored artifact. Use a later phase to retry a failed upload
+without rebuilding.
 
 ### Triggering builds manually
 
 ```bash
-# Android — APK or AAB
-gh workflow run build-android.yml --ref main -f environment=production -f android-export=aab
+# Development APK
+gh workflow run 10-build-development.yml --ref main -f platform=Android
 
-# WebGL
-gh workflow run build-webgl.yml --ref main -f environment=staging
+# Release AAB for every platform in RELEASE_BUILD_PLATFORMS
+gh workflow run 11-build-release.yml --ref main -f platform=All
 
-# iOS (needs a self-hosted macOS runner — see below)
-gh workflow run build-ios.yml --ref main -f environment=production
-
-# Every platform for the environment
-gh workflow run build-all.yml --ref main -f environment=production
+# Promote that AAB to Google Play internal testing
+gh workflow run 20-release-android.yml --ref main \
+  -f build-version=1.4.2 -f package-name=com.company.game
 ```
 
 > A `workflow_dispatch` workflow is only registered once it exists on the
 > **default branch** (`main`). A newly added entry workflow is not dispatchable
 > from a feature branch until it has been merged.
 
-Supported platforms: **Android**, **WebGL**, **Linux64**, **LinuxServer**,
-**Windows64**. **iOS** requires a registered self-hosted macOS runner with the
-`macos-unity-xcode` label — until one is provisioned the iOS build reports
-`blocked` rather than failing the run (see
-[SELF\_HOSTED\_MACOS\_RUNNER.md](unity-build-workflows/docs/SELF_HOSTED_MACOS_RUNNER.md)).
-
 ### Inputs
 
-Every manual workflow groups its inputs by who changes them; the group is the
-prefix on each field's description.
+Inputs are grouped by who changes them; the group is the prefix on each field's
+description. A normal build needs `GENERAL` and nothing else.
 
-| Group | Inputs | Notes |
-|---|---|---|
-| `GENERAL` | `environment` | `development` / `staging` / `production` |
-| `ANDROID` | `android-export` | `apk` or `aab` — **Build Android only** |
-| `QUALITY` | `run-tests`, `test-mode` | Tests are the quality gate: builds do not start until they pass |
-| `CONTENT` | `build-addressables` | |
-| `UNITY` | `unity-version`, `clean-build`, `define-symbols` | Blank Unity version = `ProjectVersion.txt` |
-| `ADVANCED` | `runner-type`, `build-engine`, `activation-strategy`, `runner-labels` | `auto` = use the repository variable |
-
-A normal build only needs `GENERAL` plus the platform's own group.
+| Group | Inputs |
+|---|---|
+| `GENERAL` | platform, environment |
+| `ANDROID` | `android-export` — **Build / Release only** |
+| `QUALITY` | run-tests, test-mode |
+| `CONTENT` | build-addressables |
+| `UNITY` | unity-version, clean-build, define-symbols |
+| `ADVANCED` | runner-type, build-engine, runner-labels (`auto` = use the repo variable) |
 
 ### The pipeline graph
 
 ```
-01 / Resolve Build Config → 01 / Validate Unity Project → 01 / Validate Unity License
-02 / Unity Tests → 02 / Quality Gate      ← builds wait for this
-03 / Android / Production / AAB           ← one node per selected platform
-04 / Android / Validate Artifact
-07 / Final Report → 08 / Notify Discord
+Development / 01 / Resolve Build Config
+Development / 02 / Quality Gate          ← builds wait for the tests
+Development / 03 / Android / APK
+Development / 04 / Android / Validate
+Development / 07 / Final Report
+Development / 08 / Notify Discord
 ```
 
 Stages 03 and 04 are matrix jobs, so the graph contains exactly the platforms
-that were selected. Building is separate from publishing — these workflows never
-touch a store; see `release.yml`.
+selected. **iOS** needs a self-hosted macOS runner with the `macos-unity-xcode`
+label; without one the iOS build reports `blocked` rather than failing the run.
+**Windows** and **Linux** produce standalone artifacts and have no release
+workflow, because this project has no distribution target for them.
 
 ### Unity version
 
