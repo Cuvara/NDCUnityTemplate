@@ -1,7 +1,8 @@
 # ────────────────────────────────────────────────────────────────────────────
 # 22-release-webgl.yml — Release / WebGL
 #
-# Release is not another build. The artifact this promotes was produced by
+# Release NEVER builds. There is no code path in this workflow that produces
+# a binary. The artifact it promotes was produced by
 # Build / Release and is IMMUTABLE: nothing here re-runs Unity, so the binary
 # QA approved is the binary that ships.
 #
@@ -33,6 +34,11 @@ on:
         required: true
         type: string
 
+      source-run-id:
+        description: "ARTIFACT · Run ID of the Build / Release run that produced it"
+        required: true
+        type: string
+
       artifact-name:
         description: "ARTIFACT · Artifact from a Build / Release run to promote"
         required: false
@@ -44,7 +50,7 @@ on:
         required: false
         default: 'staging'
         type: choice
-        options: ['build', 'staging', 'production']
+        options: ['validate', 'staging', 'production']
 
       dry-run:
         description: "SAFETY · Validate only — do not publish anything"
@@ -78,6 +84,7 @@ jobs:
       unity-version: ${{ inputs.unity-version }}
       build-version: ${{ inputs.build-version }}
       artifact-name: ${{ inputs.artifact-name }}
+      source-run-id: ${{ inputs.source-run-id }}
       start-phase: ${{ inputs.start-phase }}
       cloudflare-pages-project: ${{ inputs.cloudflare-pages-project }}
       expected-compression: ${{ inputs.expected-compression != 'any' && inputs.expected-compression || '' }}
