@@ -6,102 +6,21 @@ name: Unity Build
 # Architecture: see unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW_SPEC.md
 # Branch flow:  see unity-build-workflows/docs/BRANCH_FLOW_CONTRACT.md
 
+# Manual builds live in the per-platform entry workflows, NOT here:
+#
+#   Build Android  → build-android.yml   (exposes the APK/AAB choice)
+#   Build iOS      → build-ios.yml       (exposes the macOS runner labels)
+#   Build WebGL    → build-webgl.yml
+#   Build All      → build-all.yml       (platforms from *_BUILD_PLATFORMS)
+#
+# This file is the AUTOMATIC lane only: push and pull_request. Platform set,
+# environment, tests and Addressables are resolved per branch by
+# resolve_build_flow.sh from the repository variables, so there is nothing here
+# for a human to fill in — which is why the workflow_dispatch form was removed.
+# A 14-field form that showed Android's output format to somebody building iOS
+# was the reason the entry points were split.
+
 on:
-  workflow_dispatch:
-    inputs:
-      platform:
-        description: "Target platform(s)"
-        required: false
-        default: All
-        type: choice
-        options: [All, Android, WebGL, Linux64, LinuxServer, Windows64, iOS]
-
-      environment:
-        description: "Build environment (passed to Unity)"
-        required: false
-        default: production
-        type: choice
-        options: [production, staging, development]
-
-      run-tests:
-        description: "Run EditMode/PlayMode tests before building"
-        required: false
-        default: false
-        type: boolean
-
-      test-mode:
-        description: "Test suite to run (only when run-tests=true)"
-        required: false
-        default: All
-        type: choice
-        options: [EditMode, PlayMode, All]
-
-      build-addressables:
-        description: "Run Addressable build pipeline before platform builds"
-        required: false
-        default: false
-        type: boolean
-
-      activation-strategy:
-        description: "Unity license activation strategy (docker lane only)"
-        required: false
-        default: auto
-        type: choice
-        options: [auto, manual-license, account, serial, preactivated, none]
-
-      runner-mode:
-        description: "Execution lane (legacy — prefer runner-type/build-engine below)"
-        required: false
-        default: docker
-        type: choice
-        options: [docker, self-hosted-windows, auto]
-
-      runner-type:
-        description: "WHERE the job runs"
-        required: false
-        default: github-hosted
-        type: choice
-        options: [github-hosted, self-hosted]
-
-      build-engine:
-        description: "HOW Unity builds"
-        required: false
-        default: docker
-        type: choice
-        options: [docker, local]
-
-      runner-labels:
-        description: "Comma-separated runs-on labels (optional; blank = derived from runner-type)"
-        required: false
-        default: ''
-        type: string
-
-      unity-version:
-        description: "Override Unity version (blank = use ProjectSettings/ProjectVersion.txt)"
-        required: false
-        default: ''
-        type: string
-
-      clean-build:
-        description: "Clean Build: auto=use BUILD_CLEAN variable, true=force clean, false=force incremental"
-        required: false
-        default: auto
-        type: choice
-        options: [auto, true, false]
-
-      android-export:
-        description: "Android output: apk (installable) or aab (Play Store bundle)"
-        required: false
-        default: apk
-        type: choice
-        options: [apk, aab]
-
-      define-symbols:
-        description: "Extra Scripting Define Symbols (';' or ',' separated). Manual builds only — push/PR use *_DEFINE_SYMBOLS repo variables."
-        required: false
-        default: ''
-        type: string
-
   push:
     branches: [develop, staging, 'release-*']
 
@@ -109,31 +28,26 @@ on:
     branches: [develop, staging, 'release-*']
 
 concurrency:
-  # Include the lane (runner-type + build-engine) in the key so parallel builds
-  # of the same platform on different lanes (e.g. github-hosted+docker vs
-  # self-hosted+local) don't cancel each other. Push events carry no inputs, so
-  # they collapse to 'auto' and keep the original per-platform behaviour.
-  group: unity-build-${{ github.ref }}-${{ github.event_name }}-${{ inputs.platform || 'auto' }}-${{ inputs.runner-type || 'auto' }}-${{ inputs.build-engine || 'auto' }}
+  # No lane in the key any more: this workflow only serves push/pull_request,
+  # which carry no inputs, so every run of a given ref used the same 'auto'
+  # placeholders. Manual lane overrides now live in the per-platform entry
+  # workflows, each with its own concurrency group.
+  group: unity-build-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
+  # GitHub renders a called workflow's node as "<this job name> / <inner node>",
+  # so this name is a prefix on every node in the graph. "Unity" keeps
+  # "Unity / 03 / Android / Production / APK" readable; "pipeline" produced
+  # "pipeline / build / build".
   pipeline:
+    name: Unity
     uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
     secrets: inherit
     with:
-      platform:            ${{ inputs.platform            || '' }}
-      environment:         ${{ inputs.environment         || '' }}
-      run-tests:           ${{ inputs.run-tests           || false }}
-      test-mode:           ${{ inputs.test-mode           || '' }}
-      build-addressables:  ${{ inputs.build-addressables  || false }}
-      activation-strategy: ${{ inputs.activation-strategy || '' }}
-      runner-mode:         ${{ inputs.runner-mode         || '' }}
-      runner-type:         ${{ inputs.runner-type         || '' }}
-      build-engine:        ${{ inputs.build-engine        || '' }}
-      runner-labels:       ${{ inputs.runner-labels       || '' }}
-      unity-version:       ${{ inputs.unity-version       || '' }}
-      clean-build:         ${{ inputs.clean-build         || 'auto' }}
-      android-export:      ${{ inputs.android-export      || 'apk' }}
-      define-symbols:      ${{ inputs.define-symbols      || '' }}
+      # Everything else is resolved per branch by resolve_build_flow.sh from the
+      # repository variables — platform set, environment, tests, Addressables,
+      # define symbols, runner lane and Android output format. Passing empty
+      # overrides from a form that no longer exists would only mask that.
       project-path:        '.'
       toolkit-ref:         'main'

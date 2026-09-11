@@ -1,0 +1,125 @@
+# ────────────────────────────────────────────────────────────────────────────
+# build-ios.yml — Build iOS
+#
+# Why this exists as its own workflow: GitHub's workflow_dispatch form has no
+# conditional visibility, so a single multi-platform form has to show Android's
+# APK/AAB choice to somebody releasing iOS. Splitting the ENTRY POINT — not the
+# implementation — is the only way to get a form that shows just the options
+# that apply. Every one of these workflows calls the same
+# unity-pipeline.yml engine; none of them contains build logic.
+#
+# Automatic push/PR builds are NOT here — they stay in unity-build.yml, which
+# resolves platforms per branch from the *_BUILD_PLATFORMS repository variables.
+#
+# iOS-only entry point. Produces the Unity-exported Xcode project and validates
+# it. Archiving, signing and the IPA belong to the release pipeline
+# (pipeline-ios-release.yml) — that is where the certificates live.
+#
+# iOS requires build-engine=local on a self-hosted macOS runner; on any other
+# lane the build job reports 'blocked' rather than failing the run. Set
+# runner-labels accordingly.
+# ────────────────────────────────────────────────────────────────────────────
+
+name: Build iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "GENERAL · Build environment"
+        required: false
+        default: 'production'
+        type: choice
+        options: ['development', 'staging', 'production']
+
+      run-tests:
+        description: "QUALITY · Run Unity tests before building (the quality gate)"
+        required: false
+        default: true
+        type: boolean
+
+      test-mode:
+        description: "QUALITY · Test suite to run (ignored when run-tests is off)"
+        required: false
+        default: 'All'
+        type: choice
+        options: ['EditMode', 'PlayMode', 'All']
+
+      build-addressables:
+        description: "CONTENT · Run the Addressable build before the player build"
+        required: false
+        default: false
+        type: boolean
+
+      unity-version:
+        description: "UNITY · Unity version override (blank = ProjectVersion.txt)"
+        required: false
+        default: ''
+        type: string
+
+      clean-build:
+        description: "UNITY · Clean build (blank = auto: clean for release, incremental otherwise)"
+        required: false
+        default: 'auto'
+        type: choice
+        options: ['auto', 'true', 'false']
+
+      define-symbols:
+        description: "UNITY · Extra scripting define symbols (';' or ',' separated)"
+        required: false
+        default: ''
+        type: string
+
+      runner-type:
+        description: "ADVANCED · WHERE the job runs (auto = RUNNER_TYPE variable)"
+        required: false
+        default: 'auto'
+        type: choice
+        options: ['auto', 'github-hosted', 'self-hosted']
+
+      build-engine:
+        description: "ADVANCED · HOW Unity builds (auto = BUILD_ENGINE variable)"
+        required: false
+        default: 'auto'
+        type: choice
+        options: ['auto', 'docker', 'local']
+
+      activation-strategy:
+        description: "ADVANCED · Unity licence activation strategy (docker lane only)"
+        required: false
+        default: 'auto'
+        type: choice
+        options: ['auto', 'manual-license', 'account', 'serial', 'preactivated', 'none']
+
+      runner-labels:
+        description: "ADVANCED · Runner labels as a JSON array (blank = RUNNER_LABELS variable)"
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: build-ios-${{ github.ref }}-${{ inputs.environment }}
+  cancel-in-progress: true
+
+jobs:
+  # The node name prefixes every node of the called pipeline in the Actions
+  # graph, so it is kept short and platform-shaped.
+  build:
+    name: iOS
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
+    secrets: inherit
+    with:
+      platform: iOS
+      environment: ${{ inputs.environment }}
+      run-tests: ${{ inputs.run-tests }}
+      test-mode: ${{ inputs.test-mode }}
+      build-addressables: ${{ inputs.build-addressables }}
+      unity-version: ${{ inputs.unity-version }}
+      clean-build: ${{ inputs.clean-build }}
+      define-symbols: ${{ inputs.define-symbols }}
+      runner-type: ${{ inputs.runner-type == 'auto' && '' || inputs.runner-type }}
+      build-engine: ${{ inputs.build-engine == 'auto' && '' || inputs.build-engine }}
+      activation-strategy: ${{ inputs.activation-strategy }}
+      project-path: '.'
+      toolkit-ref: 'main'
+      runner-labels: ${{ inputs.runner-labels }}
