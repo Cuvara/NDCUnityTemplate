@@ -12,67 +12,79 @@ This project uses the
 git submodule) for all CI builds. Unity operations run inside pinned Docker
 containers on GitHub Actions — no local Unity installation is required for CI.
 
-The active build workflow is **`unity-build.yml`** (explicit-platform-jobs flow).
-Each platform is a separate named job in the GitHub Actions UI — independently
-retryable and independently colour-coded.
+Builds are split into an **automatic** lane and **per-platform manual** entry
+workflows. All of them call the same `unity-pipeline.yml` engine in the toolkit
+— the split is user experience, not duplicated build logic.
 
-See [unity-build-workflows/docs/EXPLICIT\_PLATFORM\_FLOW.md](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md)
-for a full guide to the job graph, inputs, activation, and platform selection rules.
+| Workflow | Trigger | Use it for |
+|---|---|---|
+| **Unity Build** (`unity-build.yml`) | push / PR to `develop`, `staging`, `release-*` | Automatic CI. No form: platforms, environment, tests and Addressables all resolve per branch from the repository variables. |
+| **Build Android** (`build-android.yml`) | manual | Android. The only workflow with the APK/AAB choice. |
+| **Build iOS** (`build-ios.yml`) | manual | iOS. Exposes the macOS runner labels. |
+| **Build WebGL** (`build-webgl.yml`) | manual | WebGL. |
+| **Build All** (`build-all.yml`) | manual | Every platform in the environment's `*_BUILD_PLATFORMS` variable. |
+
+Why separate files: GitHub's `workflow_dispatch` form has no conditional input
+visibility, so one multi-platform form has to show Android's APK/AAB choice to
+somebody building iOS. Splitting the entry point is the only way to get a form
+that contains just the options that apply. See
+[PIPELINE\_ARCHITECTURE.md § 1a](unity-build-workflows/docs/PIPELINE_ARCHITECTURE.md).
 
 ### Triggering builds manually
 
 ```bash
-# Android
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=Android
+# Android — APK or AAB
+gh workflow run build-android.yml --ref main -f environment=production -f android-export=aab
 
 # WebGL
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=WebGL
+gh workflow run build-webgl.yml --ref main -f environment=staging
 
-# Linux64
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=Linux64
+# iOS (needs a self-hosted macOS runner — see below)
+gh workflow run build-ios.yml --ref main -f environment=production
 
-# Linux Dedicated Server
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=LinuxServer
-
-# All platforms at once
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=All
+# Every platform for the environment
+gh workflow run build-all.yml --ref main -f environment=production
 ```
 
-Supported platforms: **Android**, **WebGL**, **Linux64**, **LinuxServer**.
-**iOS** requires a registered self-hosted macOS runner with the
-`macos-unity-xcode` label — it is **blocked** until one is provisioned (see
-[SELF\_HOSTED\_MACOS\_RUNNER.md](unity-build-workflows/docs/SELF_HOSTED_MACOS_RUNNER.md),
-[EXPLICIT\_PLATFORM\_FLOW.md § iOS](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md#6-ios-build--special-requirements)
-and
-[GITHUB\_ACTIONS\_BUILD\_RUNBOOK.md § 10](unity-build-workflows/docs/GITHUB_ACTIONS_BUILD_RUNBOOK.md#10-iosmacos-runner-limitations)).
+> A `workflow_dispatch` workflow is only registered once it exists on the
+> **default branch** (`main`). A newly added entry workflow is not dispatchable
+> from a feature branch until it has been merged.
 
-### Key dispatch inputs
+Supported platforms: **Android**, **WebGL**, **Linux64**, **LinuxServer**,
+**Windows64**. **iOS** requires a registered self-hosted macOS runner with the
+`macos-unity-xcode` label — until one is provisioned the iOS build reports
+`blocked` rather than failing the run (see
+[SELF\_HOSTED\_MACOS\_RUNNER.md](unity-build-workflows/docs/SELF_HOSTED_MACOS_RUNNER.md)).
 
-| Input | Default | Description |
+### Inputs
+
+Every manual workflow groups its inputs by who changes them; the group is the
+prefix on each field's description.
+
+| Group | Inputs | Notes |
 |---|---|---|
-| `platform` | `All` | `All`, `Android`, `WebGL`, `Linux64`, `LinuxServer`, `iOS` |
-| `run-tests` | `false` | Run Unity tests before builds |
-| `build-addressables` | `false` | Build Addressables catalog before platform builds |
-| `environment` | `production` | `production`, `staging`, `development` |
-| `runner-mode` | `docker` | `docker`, `self-hosted-windows` |
-| `clean-build` | `false` | Force full `Library/` cache delete |
+| `GENERAL` | `environment` | `development` / `staging` / `production` |
+| `ANDROID` | `android-export` | `apk` or `aab` — **Build Android only** |
+| `QUALITY` | `run-tests`, `test-mode` | Tests are the quality gate: builds do not start until they pass |
+| `CONTENT` | `build-addressables` | |
+| `UNITY` | `unity-version`, `clean-build`, `define-symbols` | Blank Unity version = `ProjectVersion.txt` |
+| `ADVANCED` | `runner-type`, `build-engine`, `activation-strategy`, `runner-labels` | `auto` = use the repository variable |
 
-Full input reference: [EXPLICIT\_PLATFORM\_FLOW.md § 2](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md#2-workflow-dispatch-inputs).
+A normal build only needs `GENERAL` plus the platform's own group.
+
+### The pipeline graph
+
+```
+01 / Resolve Build Config → 01 / Validate Unity Project → 01 / Validate Unity License
+02 / Unity Tests → 02 / Quality Gate      ← builds wait for this
+03 / Android / Production / AAB           ← one node per selected platform
+04 / Android / Validate Artifact
+07 / Final Report → 08 / Notify Discord
+```
+
+Stages 03 and 04 are matrix jobs, so the graph contains exactly the platforms
+that were selected. Building is separate from publishing — these workflows never
+touch a store; see `release.yml`.
 
 ### Unity version
 
