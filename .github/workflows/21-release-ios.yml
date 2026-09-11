@@ -76,7 +76,7 @@ concurrency:
 
 jobs:
   release:
-    name: iOS
+    name: Release
     uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-ios-release.yml@main
     secrets: inherit
     with:
