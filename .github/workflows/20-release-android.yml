@@ -24,11 +24,6 @@ name: Release / Android
 on:
   workflow_dispatch:
     inputs:
-      unity-version:
-        description: "GENERAL · Unity version (blank = ProjectVersion.txt)"
-        required: false
-        default: ''
-        type: string
 
       build-version:
         description: "GENERAL · Version being released, e.g. 1.4.2"
@@ -86,7 +81,6 @@ jobs:
     uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-android-release.yml@main
     secrets: inherit
     with:
-      unity-version: ${{ inputs.unity-version }}
       build-version: ${{ inputs.build-version }}
       package-name: ${{ inputs.package-name }}
       artifact-name: ${{ inputs.artifact-name }}
