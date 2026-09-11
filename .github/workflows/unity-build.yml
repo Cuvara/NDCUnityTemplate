@@ -117,7 +117,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # GitHub renders a called workflow's node as "<this job name> / <inner node>",
+  # so this name is a prefix on every node in the graph. "Unity" keeps
+  # "Unity / 03 / Android / Production / APK" readable; "pipeline" produced
+  # "pipeline / build / build".
   pipeline:
+    name: Unity
     uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
     secrets: inherit
     with:
