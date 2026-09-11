@@ -1,0 +1,95 @@
+# ────────────────────────────────────────────────────────────────────────────
+# 24-release-linux.yml — Release / Linux  (Steam)
+#
+# Release NEVER builds. There is no code path in this workflow that produces a
+# binary. The artifact it promotes was produced by Build / Release and is
+# IMMUTABLE: nothing here re-runs Unity, so the binary QA approved is the
+# binary that ships.
+#
+#   Build / Release  ->  release-linux  ->  [this workflow]  ->  Steam
+#
+# Linux is a PLATFORM; Steam is a DISTRIBUTION PROVIDER. Building a Linux
+# release needs no Steam account. Steam configuration gates PUBLISHING only,
+# and it fails loudly rather than skipping quietly.
+#
+# Repository variables (public ids, not secrets):
+#   STEAM_APP_ID            e.g. "480"
+#   STEAM_DEPOTS            {"Windows64": "480011", "Linux64": "480012"}
+#                           One object for the whole app — Windows and Linux
+#                           are depots of one Steam app, not two configurations.
+#   STEAM_BRANCH_INTERNAL   default "internal"
+#   STEAM_BRANCH_EXTERNAL   default "beta"
+#   STEAM_BRANCH_PRODUCTION default "default"  (Steam's live branch)
+#
+# Repository secrets:
+#   STEAM_USERNAME          the publishing account
+#   STEAM_CONFIG_VDF        base64 of a config.vdf whose Steam Guard session is
+#                           already valid — see docs/STEAM_DISTRIBUTION.md
+#
+# GitHub Environments used as approval boundaries:
+#   steam-internal, steam-external, steam-production
+# ────────────────────────────────────────────────────────────────────────────
+
+name: Release / Linux
+
+on:
+  workflow_dispatch:
+    inputs:
+      build-version:
+        description: "GENERAL · Version being released, e.g. 1.4.2"
+        required: true
+        type: string
+
+      source-run-id:
+        description: "ARTIFACT · Run ID of the Build / Release run that produced it"
+        required: true
+        type: string
+
+      artifact-name:
+        description: "ARTIFACT · Artifact from a Build / Release run to promote"
+        required: false
+        default: 'release-linux'
+        type: string
+
+      start-phase:
+        description: "PHASE · Where to start. Use a later phase to retry without rebuilding"
+        required: false
+        default: 'internal'
+        type: choice
+        options: ['validate', 'internal', 'external', 'production']
+
+      skip-external:
+        description: "STEAM · Skip the beta branch (internal -> production)"
+        required: false
+        default: false
+        type: boolean
+
+      build-description:
+        description: "STEAM · Text shown against the build in Steamworks"
+        required: false
+        default: ''
+        type: string
+
+      dry-run:
+        description: "SAFETY · Verify, validate and stage only — upload nothing"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  group: release-linux-${{ inputs.build-version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-linux-release.yml@main
+    secrets: inherit
+    with:
+      build-version: ${{ inputs.build-version }}
+      source-run-id: ${{ inputs.source-run-id }}
+      artifact-name: ${{ inputs.artifact-name }}
+      start-phase: ${{ inputs.start-phase }}
+      skip-external: ${{ inputs.skip-external }}
+      build-description: ${{ inputs.build-description }}
+      dry-run: ${{ inputs.dry-run }}
