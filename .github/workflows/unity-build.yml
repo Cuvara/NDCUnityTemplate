@@ -23,9 +23,27 @@ name: Unity Build
 on:
   push:
     branches: [develop, staging, 'release-*']
+    # A docs-only change does not need a Unity test run and two platform
+    # builds. Safe here because this repository has no required status checks
+    # — with one, a filtered-out workflow would leave a PR permanently
+    # "waiting" for a check that can never report.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
 
   pull_request:
     branches: [develop, staging, 'release-*']
+    # A docs-only change does not need a Unity test run and two platform
+    # builds. Safe here because this repository has no required status checks
+    # — with one, a filtered-out workflow would leave a PR permanently
+    # "waiting" for a check that can never report.
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'LICENSE'
+      - '.gitignore'
 
 concurrency:
   # No lane in the key any more: this workflow only serves push/pull_request,
