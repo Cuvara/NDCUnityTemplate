@@ -6,7 +6,7 @@
 # Build / Release and is IMMUTABLE: nothing here re-runs Unity, so the binary
 # QA approved is the binary that ships.
 #
-#   Build / Release  ->  release-ios-xcodeproj  ->  [this workflow]  ->  store / host
+#   Build / Release  ->  release-ios-ipa  ->  [this workflow]  ->  App Store Connect
 #
 # Each platform has its own workflow because the release lifecycles are not the
 # same shape. Forcing them into one matrix would mean a job full of
@@ -41,9 +41,13 @@ on:
         type: string
 
       artifact-name:
-        description: "ARTIFACT · Artifact from a Build / Release run to promote"
+        description: "ARTIFACT · Signed IPA from a Build / Release run to promote"
         required: false
-        default: 'release-ios-xcodeproj'
+        # The signed IPA, not the Xcode project. Stage 03b of Build / Release
+        # signs and exports before the immutable boundary, so what a promotion
+        # publishes is the exact binary QA approved — a promotion cannot build,
+        # export or sign, so an Xcode project here would be unpromotable.
+        default: 'release-ios-ipa'
         type: string
 
       start-phase:
@@ -77,7 +81,7 @@ on:
         type: boolean
 
 concurrency:
-  group: release-ios-xcodeproj-${{ inputs.build-version }}
+  group: release-ios-ipa-${{ inputs.build-version }}
   cancel-in-progress: false
 
 jobs:
