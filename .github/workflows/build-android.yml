@@ -113,8 +113,8 @@ jobs:
       unity-version: ${{ inputs.unity-version }}
       clean-build: ${{ inputs.clean-build }}
       define-symbols: ${{ inputs.define-symbols }}
-      runner-type: ${{ inputs.runner-type == 'auto' && '' || inputs.runner-type }}
-      build-engine: ${{ inputs.build-engine == 'auto' && '' || inputs.build-engine }}
+      runner-type: ${{ inputs.runner-type != 'auto' && inputs.runner-type || '' }}
+      build-engine: ${{ inputs.build-engine != 'auto' && inputs.build-engine || '' }}
       activation-strategy: ${{ inputs.activation-strategy }}
       project-path: '.'
       toolkit-ref: 'main'
