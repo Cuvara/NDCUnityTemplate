@@ -1,0 +1,84 @@
+# ────────────────────────────────────────────────────────────────────────────
+# 22-release-webgl.yml — Release / WebGL
+#
+# Release is not another build. The artifact this promotes was produced by
+# Build / Release and is IMMUTABLE: nothing here re-runs Unity, so the binary
+# QA approved is the binary that ships.
+#
+#   Build / Release  ->  release-webgl  ->  [this workflow]  ->  store / host
+#
+# Each platform has its own workflow because the release lifecycles are not the
+# same shape. Forcing them into one matrix would mean a job full of
+# `if platform == ...`, which is what makes a release pipeline unreadable at the
+# moment you most need to read it.
+#
+# Hosting lifecycle: deploy to staging, verify, then promote the SAME artifact
+# to production behind the `production` Environment approval. There is no store
+# review here, so the phases are deliberately shorter than the mobile ones.
+# ────────────────────────────────────────────────────────────────────────────
+
+name: Release / WebGL
+
+on:
+  workflow_dispatch:
+    inputs:
+      unity-version:
+        description: "GENERAL · Unity version (blank = ProjectVersion.txt)"
+        required: false
+        default: ''
+        type: string
+
+      build-version:
+        description: "GENERAL · Version being released, e.g. 1.4.2"
+        required: true
+        type: string
+
+      artifact-name:
+        description: "ARTIFACT · Artifact from a Build / Release run to promote"
+        required: false
+        default: 'release-webgl'
+        type: string
+
+      start-phase:
+        description: "PHASE · Where to start. Use a later phase to retry without rebuilding"
+        required: false
+        default: 'staging'
+        type: choice
+        options: ['build', 'staging', 'production']
+
+      dry-run:
+        description: "SAFETY · Validate only — do not publish anything"
+        required: false
+        default: false
+        type: boolean
+
+      cloudflare-pages-project:
+        description: "WEBGL · Cloudflare Pages project name"
+        required: false
+        default: ''
+        type: string
+
+      expected-compression:
+        description: "WEBGL · Fail if the artifact's compression differs"
+        required: false
+        default: 'any'
+        type: choice
+        options: ['any', 'gzip', 'brotli', 'none']
+
+concurrency:
+  group: release-webgl-${{ inputs.build-version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: WebGL
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-webgl-release.yml@main
+    secrets: inherit
+    with:
+      unity-version: ${{ inputs.unity-version }}
+      build-version: ${{ inputs.build-version }}
+      artifact-name: ${{ inputs.artifact-name }}
+      start-phase: ${{ inputs.start-phase }}
+      cloudflare-pages-project: ${{ inputs.cloudflare-pages-project }}
+      expected-compression: ${{ inputs.expected-compression != 'any' && inputs.expected-compression || '' }}
+      dry-run: ${{ inputs.dry-run }}
