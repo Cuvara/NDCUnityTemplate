@@ -73,9 +73,12 @@ concurrency:
 jobs:
   release:
     name: Release
-    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-webgl-release.yml@main
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-webgl-release.yml@v3
     secrets: inherit
     with:
+      # Same ref as `uses:` above — the workflow and the scripts it runs
+      # have to come from the same version.
+      toolkit-ref: 'v3'
       build-version: ${{ inputs.build-version }}
       artifact-name: ${{ inputs.artifact-name }}
       source-run-id: ${{ inputs.source-run-id }}
