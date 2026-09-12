@@ -39,11 +39,11 @@ concurrency:
 jobs:
   ci:
     name: CI
-    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@v3
     secrets: inherit
     with:
       project-path: '.'
-      toolkit-ref: 'main'
+      toolkit-ref: 'v3'
       platform: 'None'
       run-tests: true
       build-addressables: false
