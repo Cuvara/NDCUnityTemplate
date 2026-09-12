@@ -12,67 +12,100 @@ This project uses the
 git submodule) for all CI builds. Unity operations run inside pinned Docker
 containers on GitHub Actions — no local Unity installation is required for CI.
 
-The active build workflow is **`unity-build.yml`** (explicit-platform-jobs flow).
-Each platform is a separate named job in the GitHub Actions UI — independently
-retryable and independently colour-coded.
+The pipeline has three layers, and each workflow answers one question.
 
-See [unity-build-workflows/docs/EXPLICIT\_PLATFORM\_FLOW.md](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md)
-for a full guide to the job graph, inputs, activation, and platform selection rules.
+| Workflow | Trigger | Question it answers |
+|---|---|---|
+| **CI / Validate & Test** (`01-ci.yml`) | push / PR | *Is this code safe to merge?* Validates, tests, reports. **Builds no player.** |
+| **Build / Development** (`10-build-development.yml`) | manual | *Give me something to test with.* Android ships an **APK**. |
+| **Build / Release** (`11-build-release.yml`) | manual | *Give me something we could ship.* Android ships a signed **AAB**. |
+| **Release / Android** (`20-release-android.yml`) | manual | Promote a `release-android-aab` to Google Play. |
+| **Release / iOS** (`21-release-ios.yml`) | manual | Promote a release IPA to App Store Connect. |
+| **Release / WebGL** (`22-release-webgl.yml`) | manual | Promote a `release-webgl` to hosting. |
+
+All of them call the same `unity-pipeline.yml` engine in the toolkit — the
+split is user experience, not duplicated build logic.
+
+### Build / Development vs Build / Release
+
+Release is **not** Development with `environment=production`. It is signed,
+store-shaped, and its artifacts are the immutable inputs to the Release
+workflows. The artifact names keep the two apart, so a dev build can never be
+mistaken for a release candidate:
+
+| Platform | Development | Release |
+|---|---|---|
+| Android | `development-android-apk` | `release-android-aab` |
+| iOS | `development-ios-xcodeproj` | `release-ios-xcodeproj` |
+| WebGL | `development-webgl` | `release-webgl` |
+| Windows | `development-windows` | `release-windows` |
+| Linux | `development-linux` | `release-linux` |
+| Linux (server) | `development-linux-server` | `release-linux-server` |
+
+### Artifact promotion
+
+Nothing is rebuilt between QA and production — the binary QA approved is the
+binary that ships:
+
+```
+Build / Release  →  release-android-aab  →  Release / Android
+                                             ├── internal testing
+                                             ├── closed testing
+                                             └── production   (approval)
+```
+
+Each Release workflow defaults to `start-phase` *after* the build, so it
+promotes the stored artifact. Use a later phase to retry a failed upload
+without rebuilding.
 
 ### Triggering builds manually
 
 ```bash
-# Android
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=Android
+# Development APK
+gh workflow run 10-build-development.yml --ref main -f platform=Android
 
-# WebGL
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=WebGL
+# Release AAB for every platform in RELEASE_BUILD_PLATFORMS
+gh workflow run 11-build-release.yml --ref main -f platform=All
 
-# Linux64
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=Linux64
-
-# Linux Dedicated Server
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=LinuxServer
-
-# All platforms at once
-gh workflow run unity-build.yml \
-  --repo Cuvara/NDC-Unity-Template \
-  --ref main \
-  -f platform=All
+# Promote that AAB to Google Play internal testing
+gh workflow run 20-release-android.yml --ref main \
+  -f build-version=1.4.2 -f package-name=com.company.game
 ```
 
-Supported platforms: **Android**, **WebGL**, **Linux64**, **LinuxServer**.
-**iOS** requires a registered self-hosted macOS runner with the
-`macos-unity-xcode` label — it is **blocked** until one is provisioned (see
-[SELF\_HOSTED\_MACOS\_RUNNER.md](unity-build-workflows/docs/SELF_HOSTED_MACOS_RUNNER.md),
-[EXPLICIT\_PLATFORM\_FLOW.md § iOS](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md#6-ios-build--special-requirements)
-and
-[GITHUB\_ACTIONS\_BUILD\_RUNBOOK.md § 10](unity-build-workflows/docs/GITHUB_ACTIONS_BUILD_RUNBOOK.md#10-iosmacos-runner-limitations)).
+> A `workflow_dispatch` workflow is only registered once it exists on the
+> **default branch** (`main`). A newly added entry workflow is not dispatchable
+> from a feature branch until it has been merged.
 
-### Key dispatch inputs
+### Inputs
 
-| Input | Default | Description |
-|---|---|---|
-| `platform` | `All` | `All`, `Android`, `WebGL`, `Linux64`, `LinuxServer`, `iOS` |
-| `run-tests` | `false` | Run Unity tests before builds |
-| `build-addressables` | `false` | Build Addressables catalog before platform builds |
-| `environment` | `production` | `production`, `staging`, `development` |
-| `runner-mode` | `docker` | `docker`, `self-hosted-windows` |
-| `clean-build` | `false` | Force full `Library/` cache delete |
+Inputs are grouped by who changes them; the group is the prefix on each field's
+description. A normal build needs `GENERAL` and nothing else.
 
-Full input reference: [EXPLICIT\_PLATFORM\_FLOW.md § 2](unity-build-workflows/docs/EXPLICIT_PLATFORM_FLOW.md#2-workflow-dispatch-inputs).
+| Group | Inputs |
+|---|---|
+| `GENERAL` | platform, environment |
+| `ANDROID` | `android-export` — **Build / Release only** |
+| `QUALITY` | run-tests, test-mode |
+| `CONTENT` | build-addressables |
+| `UNITY` | unity-version, clean-build, define-symbols |
+| `ADVANCED` | runner-type, build-engine, runner-labels (`auto` = use the repo variable) |
+
+### The pipeline graph
+
+```
+Development / 01 / Resolve Build Config
+Development / 02 / Quality Gate          ← builds wait for the tests
+Development / 03 / Android / APK
+Development / 04 / Android / Validate
+Development / 07 / Final Report
+Development / 08 / Notify Discord
+```
+
+Stages 03 and 04 are matrix jobs, so the graph contains exactly the platforms
+selected. **iOS** needs a self-hosted macOS runner with the `macos-unity-xcode`
+label; without one the iOS build reports `blocked` rather than failing the run.
+**Windows** and **Linux** produce standalone artifacts and have no release
+workflow, because this project has no distribution target for them.
 
 ### Unity version
 

@@ -1,0 +1,90 @@
+# ────────────────────────────────────────────────────────────────────────────
+# 21-release-ios.yml — Release / iOS
+#
+# Release NEVER builds. There is no code path in this workflow that produces
+# a binary. The artifact it promotes was produced by
+# Build / Release and is IMMUTABLE: nothing here re-runs Unity, so the binary
+# QA approved is the binary that ships.
+#
+#   Build / Release  ->  release-ios-ipa  ->  [this workflow]  ->  App Store Connect
+#
+# Each platform has its own workflow because the release lifecycles are not the
+# same shape. Forcing them into one matrix would mean a job full of
+# `if platform == ...`, which is what makes a release pipeline unreadable at the
+# moment you most need to read it.
+#
+# App Store Connect lifecycle: TestFlight internal -> TestFlight external (which
+# needs Beta App Review) -> App Store submission, optionally with a phased
+# release. None of those phases has an Android equivalent, which is why this is
+# its own workflow.
+# ────────────────────────────────────────────────────────────────────────────
+
+name: Release / iOS
+
+on:
+  workflow_dispatch:
+    inputs:
+
+      build-version:
+        description: "GENERAL · Version being released, e.g. 1.4.2"
+        required: true
+        type: string
+
+      source-run-id:
+        description: "ARTIFACT · Run ID of the Build / Release run that produced it"
+        required: true
+        type: string
+
+      artifact-name:
+        description: "ARTIFACT · Signed IPA from a Build / Release run to promote"
+        required: false
+        # The signed IPA, not the Xcode project. Stage 03b of Build / Release
+        # signs and exports before the immutable boundary, so what a promotion
+        # publishes is the exact binary QA approved — a promotion cannot build,
+        # export or sign, so an Xcode project here would be unpromotable.
+        default: 'release-ios-ipa'
+        type: string
+
+      start-phase:
+        description: "PHASE · Where to start. Use a later phase to retry without rebuilding"
+        required: false
+        default: 'internal'
+        type: choice
+        options: ['validate', 'internal', 'external', 'production']
+
+      dry-run:
+        description: "SAFETY · Validate only — do not publish anything"
+        required: false
+        default: false
+        type: boolean
+
+      app-id:
+        description: "IOS · App Store Connect app ID"
+        required: true
+        type: string
+
+
+      phased-release:
+        description: "IOS · Enable the 7-day phased release for production"
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: release-ios-ipa-${{ inputs.build-version }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-ios-release.yml@main
+    secrets: inherit
+    with:
+      build-version: ${{ inputs.build-version }}
+      version-string: ${{ inputs.build-version }}
+      app-id: ${{ inputs.app-id }}
+      artifact-name: ${{ inputs.artifact-name }}
+      source-run-id: ${{ inputs.source-run-id }}
+      start-phase: ${{ inputs.start-phase }}
+      phased-release: ${{ inputs.phased-release }}
+      dry-run: ${{ inputs.dry-run }}

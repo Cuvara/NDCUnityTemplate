@@ -1,0 +1,49 @@
+# ────────────────────────────────────────────────────────────────────────────
+# 01-ci.yml — CI / Validate & Test
+#
+# Three workflows, three questions:
+#
+#   01-ci.yml                 Is this code safe to merge?
+#   10-build-development.yml  Give me something to test with.
+#   11-build-release.yml      Give me something we could ship.
+#
+# They are separate because the answers cost different amounts and carry
+# different risk. CI must be cheap enough to run on every push; a release build
+# is signed, store-shaped and must never be mistaken for a dev build.
+#
+# All three call the same unity-pipeline.yml engine. None contains build logic.
+#
+# Answers only "is this code safe to merge?" — resolve config, validate the
+# project and the licence, run the tests, report. It builds NO player, because
+# a merge check should not pay for six Unity builds.
+#
+# Automatic on push and pull request. There is nothing here for a human to fill
+# in: everything resolves per branch from the repository variables.
+# ────────────────────────────────────────────────────────────────────────────
+
+name: CI / Validate & Test
+
+on:
+  push:
+    branches: [develop, staging, 'release-*']
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE', '.gitignore']
+
+  pull_request:
+    branches: [develop, staging, 'release-*']
+    paths-ignore: ['**.md', 'docs/**', 'LICENSE', '.gitignore']
+
+concurrency:
+  group: ci-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    name: CI
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
+    secrets: inherit
+    with:
+      project-path: '.'
+      toolkit-ref: 'main'
+      platform: 'None'
+      run-tests: true
+      build-addressables: false

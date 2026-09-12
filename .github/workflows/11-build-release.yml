@@ -1,0 +1,133 @@
+# ────────────────────────────────────────────────────────────────────────────
+# 11-build-release.yml — Build / Release
+#
+# Three workflows, three questions:
+#
+#   01-ci.yml                 Is this code safe to merge?
+#   10-build-development.yml  Give me something to test with.
+#   11-build-release.yml      Give me something we could ship.
+#
+# They are separate because the answers cost different amounts and carry
+# different risk. CI must be cheap enough to run on every push; a release build
+# is signed, store-shaped and must never be mistaken for a dev build.
+#
+# All three call the same unity-pipeline.yml engine. None contains build logic.
+#
+# Production-ready, signed artifacts. This is NOT Build / Development with
+# environment=production: Android produces an AAB for the Play Store, signing is
+# required, and the artifacts are immutable inputs to the Release workflows.
+#
+#   release-android-aab    release-webgl
+#   release-ios-xcodeproj  release-windows
+#                          release-linux
+#
+# Nothing here publishes either. The artifacts this produces are what
+# 20-release-android.yml / 21-release-ios.yml / 22-release-webgl.yml promote —
+# the binary QA tested is the binary that ships, because nothing rebuilds it.
+#
+# Tests default ON and should stay on: a release build that skipped the suite is
+# a release candidate nobody verified.
+# ────────────────────────────────────────────────────────────────────────────
+
+name: Build / Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "GENERAL · Platform to build ('All' uses RELEASE_BUILD_PLATFORMS)"
+        required: false
+        default: 'All'
+        type: choice
+        options: ['All', 'Android', 'iOS', 'WebGL', 'Windows64', 'Linux64', 'LinuxServer']
+
+      android-export:
+        description: "ANDROID · Output format (AAB is required by Google Play for new apps)"
+        required: false
+        default: 'aab'
+        type: choice
+        options: ['aab', 'apk']
+
+      run-tests:
+        description: "QUALITY · Run Unity tests as the quality gate before building"
+        required: false
+        default: true
+        type: boolean
+
+      test-mode:
+        description: "QUALITY · Test suite (ignored when run-tests is off)"
+        required: false
+        default: 'All'
+        type: choice
+        options: ['EditMode', 'PlayMode', 'All']
+
+      build-addressables:
+        description: "CONTENT · Run the Addressable build before the player build"
+        required: false
+        default: false
+        type: boolean
+
+      unity-version:
+        description: "UNITY · Unity version override (blank = ProjectVersion.txt)"
+        required: false
+        default: ''
+        type: string
+
+      clean-build:
+        description: "UNITY · Clean build (auto = clean for release, incremental otherwise)"
+        required: false
+        default: 'auto'
+        type: choice
+        options: ['auto', 'true', 'false']
+
+      define-symbols:
+        description: "UNITY · Extra scripting define symbols (';' or ',' separated)"
+        required: false
+        default: ''
+        type: string
+
+      runner-type:
+        description: "ADVANCED · WHERE the job runs (auto = RUNNER_TYPE variable)"
+        required: false
+        default: 'auto'
+        type: choice
+        options: ['auto', 'github-hosted', 'self-hosted']
+
+      build-engine:
+        description: "ADVANCED · HOW Unity builds (auto = BUILD_ENGINE variable)"
+        required: false
+        default: 'auto'
+        type: choice
+        options: ['auto', 'docker', 'local']
+
+      runner-labels:
+        description: "ADVANCED · Runner labels as a JSON array (blank = RUNNER_LABELS variable)"
+        required: false
+        default: ''
+        type: string
+
+concurrency:
+  group: build-release-${{ github.ref }}-${{ inputs.platform }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Release
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
+    secrets: inherit
+    with:
+      project-path: '.'
+      toolkit-ref: 'main'
+      build-type: release
+      platform: ${{ inputs.platform }}
+      environment: production
+      android-export: ${{ inputs.android-export }}
+      build-addressables: ${{ inputs.build-addressables }}
+      run-tests: ${{ inputs.run-tests }}
+      test-mode: ${{ inputs.test-mode }}
+      unity-version: ${{ inputs.unity-version }}
+      clean-build: ${{ inputs.clean-build }}
+      define-symbols: ${{ inputs.define-symbols }}
+      runner-type: ${{ inputs.runner-type != 'auto' && inputs.runner-type || '' }}
+      build-engine: ${{ inputs.build-engine != 'auto' && inputs.build-engine || '' }}
+      runner-labels: ${{ inputs.runner-labels }}
