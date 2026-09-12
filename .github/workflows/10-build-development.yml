@@ -30,11 +30,11 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: "GENERAL · Platform to build ('All' uses the environment's *_BUILD_PLATFORMS variable)"
+        description: "GENERAL · Platform to build. 'All' = the environment's *_BUILD_PLATFORMS; 'Desktop' = Windows64 + Linux64"
         required: false
         default: 'All'
         type: choice
-        options: ['All', 'Android', 'iOS', 'WebGL', 'Windows64', 'Linux64', 'LinuxServer']
+        options: ['All', 'Android', 'iOS', 'WebGL', 'Windows64', 'Linux64', 'LinuxServer', 'Desktop']
 
       environment:
         description: "GENERAL · Build environment"
