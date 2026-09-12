@@ -18,7 +18,7 @@
 # required, and the artifacts are immutable inputs to the Release workflows.
 #
 #   release-android-aab    release-webgl
-#   release-ios-xcodeproj  release-windows
+#   release-ios-ipa        release-windows
 #                          release-linux
 #
 # Nothing here publishes either. The artifacts this produces are what
@@ -35,11 +35,11 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: "GENERAL · Platform to build ('All' uses RELEASE_BUILD_PLATFORMS)"
+        description: "GENERAL · Platform to build. 'All' = RELEASE_BUILD_PLATFORMS; 'Desktop' = Windows64 + Linux64"
         required: false
         default: 'All'
         type: choice
-        options: ['All', 'Android', 'iOS', 'WebGL', 'Windows64', 'Linux64', 'LinuxServer']
+        options: ['All', 'Android', 'iOS', 'WebGL', 'Windows64', 'Linux64', 'LinuxServer', 'Desktop']
 
       android-export:
         description: "ANDROID · Output format (AAB is required by Google Play for new apps)"
