@@ -34,7 +34,7 @@ on:
         required: false
         default: 'All'
         type: choice
-        options: ['All', 'Android', 'iOS', 'WebGL', 'Windows64', 'Linux64', 'LinuxServer', 'Desktop']
+        options: ['All', 'Desktop', 'Android', 'iOS', 'WebGL', 'Windows', 'Linux', 'Linux Server']
 
       environment:
         description: "GENERAL · Build environment"
@@ -116,7 +116,6 @@ jobs:
       build-type: development
       platform: ${{ inputs.platform }}
       environment: ${{ inputs.environment }}
-      android-export: apk
       build-addressables: ${{ inputs.build-addressables }}
       run-tests: ${{ inputs.run-tests }}
       test-mode: ${{ inputs.test-mode }}

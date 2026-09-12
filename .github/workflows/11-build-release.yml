@@ -39,14 +39,7 @@ on:
         required: false
         default: 'All'
         type: choice
-        options: ['All', 'Android', 'iOS', 'WebGL', 'Windows64', 'Linux64', 'LinuxServer', 'Desktop']
-
-      android-export:
-        description: "ANDROID · Output format (AAB is required by Google Play for new apps)"
-        required: false
-        default: 'aab'
-        type: choice
-        options: ['aab', 'apk']
+        options: ['All', 'Desktop', 'Android', 'iOS', 'WebGL', 'Windows', 'Linux', 'Linux Server']
 
       run-tests:
         description: "QUALITY · Run Unity tests as the quality gate before building"
@@ -121,7 +114,6 @@ jobs:
       build-type: release
       platform: ${{ inputs.platform }}
       environment: production
-      android-export: ${{ inputs.android-export }}
       build-addressables: ${{ inputs.build-addressables }}
       run-tests: ${{ inputs.run-tests }}
       test-mode: ${{ inputs.test-mode }}
