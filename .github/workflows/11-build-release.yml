@@ -107,6 +107,11 @@ jobs:
   build:
     name: Release
     uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@v3
+    # A called workflow's permissions are capped by the caller's, and the
+    # report stage reads the build jobs' logs to summarise Unity errors.
+    permissions:
+      contents: read
+      actions: read
     secrets: inherit
     with:
       project-path: '.'
