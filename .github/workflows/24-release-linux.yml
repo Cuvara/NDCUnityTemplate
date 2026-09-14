@@ -83,12 +83,12 @@ concurrency:
 jobs:
   release:
     name: Release
-    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-linux-release.yml@v5
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-linux-release.yml@feat/fastlane-release
     secrets: inherit
     with:
       # Same ref as `uses:` above — the workflow and the scripts it runs
       # have to come from the same version.
-      toolkit-ref: 'v5'
+      toolkit-ref: 'feat/fastlane-release'
       build-version: ${{ inputs.build-version }}
       source-run-id: ${{ inputs.source-run-id }}
       artifact-name: ${{ inputs.artifact-name }}
