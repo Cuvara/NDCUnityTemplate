@@ -3,7 +3,7 @@
   "projectName": "NDC-Unity-Template",
   "companyName": "DefaultCompany",
   "productName": "NDC-Unity-Template",
-  "bundleVersion": "1.0.0",
+  "bundleVersion": "0.1.0",
   "buildNumberStrategy": "github_run_number",
 
   "outputDirectory": "Builds/Production",

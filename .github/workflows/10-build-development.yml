@@ -30,11 +30,11 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: "GENERAL · Platform to build ('All' uses the environment's *_BUILD_PLATFORMS variable)"
+        description: "GENERAL · Platform to build. 'All' = the environment's *_BUILD_PLATFORMS; 'Desktop' = Windows64 + Linux64"
         required: false
         default: 'All'
         type: choice
-        options: ['All', 'Android', 'iOS', 'WebGL', 'Windows64', 'Linux64', 'LinuxServer']
+        options: ['All', 'Desktop', 'Android', 'iOS', 'WebGL', 'Windows', 'Linux', 'Linux Server']
 
       environment:
         description: "GENERAL · Build environment"
@@ -101,22 +101,36 @@ on:
         default: ''
         type: string
 
+# Where finished builds go so people can download them by clicking a link.
+# Set the BUILD_DELIVERY repository variable:
+#
+#   none    (default) nothing is published; the Discord link stays a GitHub
+#           artifact URL, which only opens for a signed-in collaborator
+#   r2      Cloudflare R2. Needs vars R2_BUCKET, R2_PUBLIC_BASE_URL and either
+#           R2_ACCOUNT_ID or CLOUDFLARE_ACCOUNT_ID, plus secrets
+#           R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY
+#   local   a directory on your self-hosted runner, served by your own web
+#           server. Needs vars BUILD_PUBLISH_DIR and BUILD_PUBLISH_BASE_URL,
+#           and only works on the self-hosted lane — the file has to be on the
+#           machine that serves it
+#
+# See docs/BUILD_DELIVERY.md.
+
 concurrency:
   group: build-development-${{ github.ref }}-${{ inputs.platform }}-${{ inputs.environment }}
   cancel-in-progress: true
 
 jobs:
   build:
-    name: Development
-    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@main
+    name: Dev
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@v5
     secrets: inherit
     with:
       project-path: '.'
-      toolkit-ref: 'main'
+      toolkit-ref: 'v5'
       build-type: development
       platform: ${{ inputs.platform }}
       environment: ${{ inputs.environment }}
-      android-export: apk
       build-addressables: ${{ inputs.build-addressables }}
       run-tests: ${{ inputs.run-tests }}
       test-mode: ${{ inputs.test-mode }}
