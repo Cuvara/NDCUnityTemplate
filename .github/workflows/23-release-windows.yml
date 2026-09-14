@@ -83,12 +83,12 @@ concurrency:
 jobs:
   release:
     name: Release
-    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-windows-release.yml@v3
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-windows-release.yml@v5
     secrets: inherit
     with:
       # Same ref as `uses:` above — the workflow and the scripts it runs
       # have to come from the same version.
-      toolkit-ref: 'v3'
+      toolkit-ref: 'v5'
       build-version: ${{ inputs.build-version }}
       source-run-id: ${{ inputs.source-run-id }}
       artifact-name: ${{ inputs.artifact-name }}
