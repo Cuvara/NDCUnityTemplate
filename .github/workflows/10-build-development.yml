@@ -123,11 +123,11 @@ concurrency:
 jobs:
   build:
     name: Dev
-    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@feat/firebase-app-distribution
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@feat/fastlane-release
     secrets: inherit
     with:
       project-path: '.'
-      toolkit-ref: 'feat/firebase-app-distribution'
+      toolkit-ref: 'feat/fastlane-release'
       build-type: development
       platform: ${{ inputs.platform }}
       environment: ${{ inputs.environment }}
