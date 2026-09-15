@@ -123,11 +123,11 @@ concurrency:
 jobs:
   build:
     name: Dev
-    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@07b2d59f1a57563082b7bb7ec919622d66fdc840
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@5e20be1c2e0feaf8fd1c418bdbfba741e7a1e06f
     secrets: inherit
     with:
       project-path: '.'
-      toolkit-ref: '07b2d59f1a57563082b7bb7ec919622d66fdc840'
+      toolkit-ref: '5e20be1c2e0feaf8fd1c418bdbfba741e7a1e06f'
       build-type: development
       platform: ${{ inputs.platform }}
       environment: ${{ inputs.environment }}
@@ -140,6 +140,7 @@ jobs:
       runner-type: ${{ inputs.runner-type != 'auto' && inputs.runner-type || '' }}
       build-engine: ${{ inputs.build-engine != 'auto' && inputs.build-engine || '' }}
       runner-labels: ${{ inputs.runner-labels }}
+
 
 
 
