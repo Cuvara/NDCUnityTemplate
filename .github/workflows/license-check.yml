@@ -12,7 +12,7 @@ on:
 jobs:
   license:
     name: Check Unity License
-    uses: Cuvara/unity-build-workflows/.github/workflows/unity-license-check.yml@main
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-license-check.yml@v6.1.0
     with:
       unity-version: ${{ vars.UNITY_VERSION }}
     secrets:
