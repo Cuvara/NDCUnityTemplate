@@ -78,12 +78,12 @@ concurrency:
 jobs:
   release:
     name: Release
-    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-android-release.yml@v6.1.0
+    uses: Cuvara/unity-build-workflows/.github/workflows/pipeline-android-release.yml@456bd4111ee6df75003fe1bb51e15c29fb599b27
     secrets: inherit
     with:
       # Same ref as `uses:` above — the workflow and the scripts it runs
       # have to come from the same version.
-      toolkit-ref: 'v6.1.0'
+      toolkit-ref: '456bd4111ee6df75003fe1bb51e15c29fb599b27'
       build-version: ${{ inputs.build-version }}
       package-name: ${{ inputs.package-name }}
       artifact-name: ${{ inputs.artifact-name }}
