@@ -123,11 +123,11 @@ concurrency:
 jobs:
   build:
     name: Dev
-    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@feat/fastlane-full
+    uses: Cuvara/unity-build-workflows/.github/workflows/unity-pipeline.yml@v5
     secrets: inherit
     with:
       project-path: '.'
-      toolkit-ref: 'feat/fastlane-full'
+      toolkit-ref: 'v5'
       build-type: development
       platform: ${{ inputs.platform }}
       environment: ${{ inputs.environment }}
